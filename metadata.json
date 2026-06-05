@@ -1,0 +1,6 @@
+{
+  "name": "TPHL Sales Incentive",
+  "description": "A comprehensive Sales Incentive Management System for tracking projects, sales teams, executives, entering sales, and automatically calculating incentives and target bonuses.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

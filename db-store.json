@@ -1,0 +1,1045 @@
+{
+  "users": [
+    {
+      "id": "u-admin",
+      "email": "admin@tphl.com",
+      "name": "TPHL Management",
+      "role": "Admin",
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "u-leader1",
+      "email": "leader@tphl.com",
+      "name": "Sajjad Hossain",
+      "role": "Sales Team Leader",
+      "team_id": "",
+      "created_at": "2026-01-05T00:00:00Z"
+    },
+    {
+      "id": "u-exec1",
+      "email": "executive@tphl.com",
+      "name": "Rahim Ahmed",
+      "role": "Sales Executive",
+      "employee_id": "EMP01",
+      "team_id": "",
+      "created_at": "2026-01-10T00:00:00Z"
+    },
+    {
+      "id": "exec-97608104",
+      "email": "tphl-0240@tphl.com",
+      "name": "Kawser Ahmed",
+      "role": "Sales Executive",
+      "employee_id": "TPHL-0240",
+      "team_id": "",
+      "created_at": "2026-06-04T09:26:36.353Z"
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-986ba878",
+      "project_name": "Studio & Residence (345 - 1000) ",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "345-1000",
+      "floors": 10,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 817000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:06:06.536Z",
+      "registration": "No"
+    },
+    {
+      "id": "proj-6cf6b0ba",
+      "project_name": "Regular Project (1100 - 1600+)",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "1100-2000",
+      "floors": 10,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 1520000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:07:18.222Z"
+    },
+    {
+      "id": "proj-c6c8328d",
+      "project_name": "Smart City (Studio) (610 - 1199) ",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "610-1199",
+      "floors": 14,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 1618650,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:55:28.863Z"
+    },
+    {
+      "id": "proj-48cf126a",
+      "project_name": "Smart City (1200 - 1800)",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "1200-1800",
+      "floors": 14,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 1962000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:56:23.055Z"
+    },
+    {
+      "id": "proj-152782eb",
+      "project_name": "Smart City (1900 - 5000)",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "1900-5000",
+      "floors": 14,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 5450000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:57:13.863Z"
+    },
+    {
+      "id": "proj-d1cc1a49",
+      "project_name": "Smart City (Commercial)",
+      "location": "Ashulia, Dhaka",
+      "unit_measure": "345-1000",
+      "floors": 10,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 7560000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T08:59:17.203Z"
+    },
+    {
+      "id": "proj-7fb4e9a6",
+      "project_name": "Residential Studio  (500 - 900) ",
+      "location": "Ati Bazar",
+      "unit_measure": "500-900",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 1125000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:02:39.800Z"
+    },
+    {
+      "id": "proj-cb5fa4cf",
+      "project_name": "Residential  (1000 - 1400)",
+      "location": "Ati Bazar",
+      "unit_measure": "1000-1400",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 1750000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:11:31.538Z"
+    },
+    {
+      "id": "proj-7ba392c2",
+      "project_name": "Residential  (1500 - 2500)",
+      "location": "Ati Bazar",
+      "unit_measure": "1500-2500",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 3125000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:14:18.185Z"
+    },
+    {
+      "id": "proj-51c3c903",
+      "project_name": "Commercial (20K-24K)",
+      "location": "Ati Bazar",
+      "unit_measure": "200-5500",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 2072125,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:16:02.998Z"
+    },
+    {
+      "id": "proj-7716bd98",
+      "project_name": "Commercial (25K-28K)",
+      "location": "Ati Bazar",
+      "unit_measure": "100-250",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 2637096,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:16:52.596Z"
+    },
+    {
+      "id": "proj-95b78023",
+      "project_name": "Residential (1550-  3200)",
+      "location": "Bashundhara",
+      "unit_measure": "1550-3200",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 6519000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:24:09.633Z"
+    },
+    {
+      "id": "proj-073f61d2",
+      "project_name": "Commercial (29k-30k)",
+      "location": "ATi Bazar",
+      "unit_measure": "100-200",
+      "floors": 21,
+      "units": 0,
+      "total_flats": 0,
+      "land_share_amount": 2629000,
+      "first_sale_date": "2026-04-01",
+      "status": "Active",
+      "created_at": "2026-06-04T09:49:20.583Z"
+    }
+  ],
+  "salesTeams": [],
+  "teamProjects": [],
+  "salesExecutives": [
+    {
+      "id": "exec-97608104",
+      "employee_id": "TPHL-0240",
+      "name": "Kawser Ahmed",
+      "team_id": "",
+      "project_id": "proj-6cf6b0ba",
+      "target": 5,
+      "joining_date": "2026-04-01"
+    }
+  ],
+  "incentiveRules": [
+    {
+      "id": "rule-2c973d85",
+      "project_id": "proj-986ba878",
+      "sale_1_percent": 0.1,
+      "sale_2_percent": 0.15,
+      "sale_3_percent": 0.25,
+      "sale_4_percent": 0.35,
+      "sale_5_percent": 0.65,
+      "sale_6_percent": 0.85,
+      "sale_7_percent": 1.25,
+      "first_floor_bonus_percent": 0.4,
+      "top_floor_bonus_percent": 0.2,
+      "created_at": "2026-06-04T08:06:06.536Z"
+    },
+    {
+      "id": "rule-b5720e6a",
+      "project_id": "proj-6cf6b0ba",
+      "sale_1_percent": 0.15,
+      "sale_2_percent": 0.3,
+      "sale_3_percent": 0.5,
+      "sale_4_percent": 0.75,
+      "sale_5_percent": 1,
+      "sale_6_percent": 1.25,
+      "sale_7_percent": 1.5,
+      "first_floor_bonus_percent": 0.5,
+      "top_floor_bonus_percent": 0.5,
+      "created_at": "2026-06-04T08:07:18.222Z"
+    },
+    {
+      "id": "rule-b711185e",
+      "project_id": "proj-c6c8328d",
+      "sale_1_percent": 0.1,
+      "sale_2_percent": 0.15,
+      "sale_3_percent": 0.25,
+      "sale_4_percent": 0.35,
+      "sale_5_percent": 0.65,
+      "sale_6_percent": 0.85,
+      "sale_7_percent": 1.25,
+      "first_floor_bonus_percent": 0.5,
+      "top_floor_bonus_percent": 0.5,
+      "created_at": "2026-06-04T08:55:28.863Z"
+    },
+    {
+      "id": "rule-a675ece9",
+      "project_id": "proj-48cf126a",
+      "sale_1_percent": 0.75,
+      "sale_2_percent": 1,
+      "sale_3_percent": 1.25,
+      "sale_4_percent": 1.5,
+      "sale_5_percent": 1.75,
+      "sale_6_percent": 2,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0.5,
+      "top_floor_bonus_percent": 0.5,
+      "created_at": "2026-06-04T08:56:23.055Z"
+    },
+    {
+      "id": "rule-a790fe61",
+      "project_id": "proj-152782eb",
+      "sale_1_percent": 1,
+      "sale_2_percent": 1.25,
+      "sale_3_percent": 1.5,
+      "sale_4_percent": 1.75,
+      "sale_5_percent": 2,
+      "sale_6_percent": 2,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0.25,
+      "top_floor_bonus_percent": 0.1,
+      "created_at": "2026-06-04T08:57:13.863Z"
+    },
+    {
+      "id": "rule-185d2dc5",
+      "project_id": "proj-d1cc1a49",
+      "sale_1_percent": 1,
+      "sale_2_percent": 1.1,
+      "sale_3_percent": 1.25,
+      "sale_4_percent": 1.5,
+      "sale_5_percent": 1.75,
+      "sale_6_percent": 2,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0.25,
+      "top_floor_bonus_percent": 0.1,
+      "created_at": "2026-06-04T08:59:17.203Z"
+    },
+    {
+      "id": "rule-3ed576a3",
+      "project_id": "proj-7fb4e9a6",
+      "sale_1_percent": 0.1,
+      "sale_2_percent": 0.2,
+      "sale_3_percent": 0.25,
+      "sale_4_percent": 0.45,
+      "sale_5_percent": 0.65,
+      "sale_6_percent": 1,
+      "sale_7_percent": 1.25,
+      "first_floor_bonus_percent": 0.4,
+      "top_floor_bonus_percent": 0.2,
+      "created_at": "2026-06-04T09:02:39.800Z"
+    },
+    {
+      "id": "rule-93838c1f",
+      "project_id": "proj-cb5fa4cf",
+      "sale_1_percent": 0.45,
+      "sale_2_percent": 0.65,
+      "sale_3_percent": 1,
+      "sale_4_percent": 1.25,
+      "sale_5_percent": 1.5,
+      "sale_6_percent": 1.75,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0.4,
+      "top_floor_bonus_percent": 0.2,
+      "created_at": "2026-06-04T09:11:31.538Z"
+    },
+    {
+      "id": "rule-3528843d",
+      "project_id": "proj-7ba392c2",
+      "sale_1_percent": 0.5,
+      "sale_2_percent": 0.75,
+      "sale_3_percent": 1.1,
+      "sale_4_percent": 1.25,
+      "sale_5_percent": 1.55,
+      "sale_6_percent": 1.65,
+      "sale_7_percent": 1.85,
+      "first_floor_bonus_percent": 0.25,
+      "top_floor_bonus_percent": 0.1,
+      "created_at": "2026-06-04T09:14:18.185Z"
+    },
+    {
+      "id": "rule-8b5ac909",
+      "project_id": "proj-51c3c903",
+      "sale_1_percent": 0.5,
+      "sale_2_percent": 0.75,
+      "sale_3_percent": 1,
+      "sale_4_percent": 1.25,
+      "sale_5_percent": 1.5,
+      "sale_6_percent": 1.75,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0,
+      "top_floor_bonus_percent": 0,
+      "created_at": "2026-06-04T09:16:02.998Z"
+    },
+    {
+      "id": "rule-5d7cf245",
+      "project_id": "proj-7716bd98",
+      "sale_1_percent": 1,
+      "sale_2_percent": 1.1,
+      "sale_3_percent": 1.25,
+      "sale_4_percent": 1.5,
+      "sale_5_percent": 1.75,
+      "sale_6_percent": 2,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0,
+      "top_floor_bonus_percent": 0,
+      "created_at": "2026-06-04T09:16:52.596Z"
+    },
+    {
+      "id": "rule-1a27df8b",
+      "project_id": "proj-95b78023",
+      "sale_1_percent": 0.4,
+      "sale_2_percent": 0.55,
+      "sale_3_percent": 0.7,
+      "sale_4_percent": 0.85,
+      "sale_5_percent": 1,
+      "sale_6_percent": 1,
+      "sale_7_percent": 1,
+      "first_floor_bonus_percent": 0.25,
+      "top_floor_bonus_percent": 0.1,
+      "created_at": "2026-06-04T09:24:09.633Z"
+    },
+    {
+      "id": "rule-bf04067c",
+      "project_id": "proj-073f61d2",
+      "sale_1_percent": 1,
+      "sale_2_percent": 1.1,
+      "sale_3_percent": 1.25,
+      "sale_4_percent": 1.5,
+      "sale_5_percent": 1.75,
+      "sale_6_percent": 2,
+      "sale_7_percent": 2,
+      "first_floor_bonus_percent": 0,
+      "top_floor_bonus_percent": 0,
+      "created_at": "2026-06-04T09:49:20.583Z"
+    }
+  ],
+  "bonusRules": {
+    "target_90_bonus": 2000,
+    "target_100_bonus": 3500,
+    "team_target_bonus": 5000
+  },
+  "sales": [
+    {
+      "id": "sale-539d795f",
+      "project_id": "proj-95b78023",
+      "unit_name": "1",
+      "unit_measure": "1550-3200",
+      "floor_number": 10,
+      "sale_number": 1,
+      "sale_date": "2026-06-01",
+      "executive_id": "exec-97608104"
+    },
+    {
+      "id": "sale-66c5cc46",
+      "project_id": "proj-95b78023",
+      "unit_name": "1",
+      "unit_measure": "1550-3200",
+      "floor_number": 1,
+      "sale_number": 2,
+      "sale_date": "2026-06-04",
+      "executive_id": "exec-97608104"
+    },
+    {
+      "id": "sale-d82cda28",
+      "project_id": "proj-986ba878",
+      "unit_name": "1",
+      "unit_measure": "345-1000",
+      "floor_number": 9,
+      "sale_number": 1,
+      "sale_date": "2026-06-04",
+      "executive_id": "exec-97608104"
+    }
+  ],
+  "salesIncentives": [
+    {
+      "id": "inc-90e7066c-2aab-4c6a-a206-4ca7d0b19881",
+      "sale_id": "sale-539d795f",
+      "executive_id": "exec-97608104",
+      "project_id": "proj-95b78023",
+      "base_incentive": 26076,
+      "floor_bonus": 0,
+      "target_bonus": 0,
+      "team_bonus": 0,
+      "total_incentive": 26076,
+      "month": 6,
+      "year": 2026
+    },
+    {
+      "id": "inc-07864bdd-5aa9-4ceb-8dc5-d411bc3b8a24",
+      "sale_id": "sale-66c5cc46",
+      "executive_id": "exec-97608104",
+      "project_id": "proj-95b78023",
+      "base_incentive": 35854.5,
+      "floor_bonus": 16297.5,
+      "target_bonus": 0,
+      "team_bonus": 0,
+      "total_incentive": 52152,
+      "month": 6,
+      "year": 2026
+    },
+    {
+      "id": "inc-a7efe3a6-f389-493f-a71b-2ea6a6fe1b12",
+      "sale_id": "sale-d82cda28",
+      "executive_id": "exec-97608104",
+      "project_id": "proj-986ba878",
+      "base_incentive": 0,
+      "floor_bonus": 0,
+      "target_bonus": 0,
+      "team_bonus": 0,
+      "total_incentive": 0,
+      "month": 6,
+      "year": 2026
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log-e38ecda5-ce3b-489d-88d1-cf14e85374f6",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Edit Project",
+      "details": "Updated project details for 'Studio & Residence (345 - 1000) '.",
+      "timestamp": "2026-06-04T11:28:37.935Z"
+    },
+    {
+      "id": "log-a2666671-6046-4643-97a2-37a6d6cee068",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Sales Entry",
+      "details": "Added sales entry for unit '1' in project 'Studio & Residence (345 - 1000) ' sold by Kawser Ahmed.",
+      "timestamp": "2026-06-04T10:25:27.339Z"
+    },
+    {
+      "id": "log-a258c8ea-136c-4b0c-bc27-045358a87a8d",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Sales Entry",
+      "details": "Added sales entry for unit '1' in project 'Residential (1550-  3200)' sold by Kawser Ahmed.",
+      "timestamp": "2026-06-04T10:22:24.829Z"
+    },
+    {
+      "id": "log-2ca104a5-3a89-4447-86ff-00b2adbc1109",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Delete Sale",
+      "details": "Deleted sale entry ID 'sale-7f546e2f'.",
+      "timestamp": "2026-06-04T10:22:11.816Z"
+    },
+    {
+      "id": "log-76def1a8-f0a7-438b-be70-c0a219dfdfb1",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Sales Entry",
+      "details": "Added sales entry for unit '1' in project 'Regular Project (1100 - 1600+)' sold by Kawser Ahmed.",
+      "timestamp": "2026-06-04T10:21:59.498Z"
+    },
+    {
+      "id": "log-03ee231c-fd0a-4c40-a381-19f00ad3572d",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Delete Project",
+      "details": "Deleted project 'Regular Project (1100 - 1600+)' (ID: proj-904b9770) and all associated sales.",
+      "timestamp": "2026-06-04T10:21:02.314Z"
+    },
+    {
+      "id": "log-b2ad0575-fd83-401a-8eac-e7df626234ab",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Edit Sale",
+      "details": "Edited sale record for ID 'sale-539d795f'.",
+      "timestamp": "2026-06-04T10:05:12.157Z"
+    },
+    {
+      "id": "log-f646fd58-0af5-4941-8a50-c6006c94ce92",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Sales Entry",
+      "details": "Added sales entry for unit '1' in project 'Residential (1550-  3200)' sold by Kawser Ahmed.",
+      "timestamp": "2026-06-04T09:59:53.582Z"
+    },
+    {
+      "id": "log-32c341e0-9ae8-4592-99e5-6d43002f33d0",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-073f61d2'.",
+      "timestamp": "2026-06-04T09:50:05.222Z"
+    },
+    {
+      "id": "log-7fb9778b-d70d-4d0f-84a4-eeded4e8fda3",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Commercial (29k-30k)' (ID: proj-073f61d2) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:49:20.583Z"
+    },
+    {
+      "id": "log-bac9262b-ab04-4778-a06d-7104b10e515a",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-95b78023'.",
+      "timestamp": "2026-06-04T09:48:16.398Z"
+    },
+    {
+      "id": "log-6165914d-dd66-4b1d-bd00-8d5170c46e1a",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-7716bd98'.",
+      "timestamp": "2026-06-04T09:46:57.836Z"
+    },
+    {
+      "id": "log-4b6f9136-d0db-491c-a39d-38863609e111",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-51c3c903'.",
+      "timestamp": "2026-06-04T09:45:57.488Z"
+    },
+    {
+      "id": "log-0850271e-2cbc-4feb-b532-7a67fdf4d4d2",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-7ba392c2'.",
+      "timestamp": "2026-06-04T09:45:00.603Z"
+    },
+    {
+      "id": "log-16258bf2-071c-49fe-8a85-86a90ed7d02e",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:43:42.452Z"
+    },
+    {
+      "id": "log-58ac45d0-2f82-4170-8042-687cba815e9f",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-cb5fa4cf'.",
+      "timestamp": "2026-06-04T09:43:40.462Z"
+    },
+    {
+      "id": "log-40e0bd1e-e30d-429a-8f4a-a26b81e94e6e",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:42:45.473Z"
+    },
+    {
+      "id": "log-ecbd1060-c020-4fd9-aa63-1911fb978b3e",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-7fb4e9a6'.",
+      "timestamp": "2026-06-04T09:42:40.914Z"
+    },
+    {
+      "id": "log-5b8af65d-eaaa-4d12-9e93-1af4f3868fd9",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:40:40.222Z"
+    },
+    {
+      "id": "log-7c1a17af-1e59-488d-92c2-09c1ecb2c5c6",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-d1cc1a49'.",
+      "timestamp": "2026-06-04T09:40:34.776Z"
+    },
+    {
+      "id": "log-a8f2ecc6-ae08-4be9-ae41-43eaee98c7e3",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:39:17.285Z"
+    },
+    {
+      "id": "log-6712ea1c-2aac-42f5-8c0e-3d0d7c6f0779",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-152782eb'.",
+      "timestamp": "2026-06-04T09:39:14.365Z"
+    },
+    {
+      "id": "log-9e3ee7a4-ef59-4ebc-af5e-937c18322436",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:37:54.743Z"
+    },
+    {
+      "id": "log-77c4388a-69ec-4c0b-982b-7b81534c6a0f",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-48cf126a'.",
+      "timestamp": "2026-06-04T09:37:49.230Z"
+    },
+    {
+      "id": "log-f720853a-8523-4815-8845-2a0fdc722405",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:35:38.374Z"
+    },
+    {
+      "id": "log-813ea313-5164-4e0a-89c5-3342a86828a2",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-c6c8328d'.",
+      "timestamp": "2026-06-04T09:35:34.865Z"
+    },
+    {
+      "id": "log-7ce0df41-4dbd-4b60-9534-95df09eac7b9",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-6cf6b0ba'.",
+      "timestamp": "2026-06-04T09:34:18.305Z"
+    },
+    {
+      "id": "log-6d8cd58e-cc1a-4b4d-95ca-0e3d3fc54404",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Global Bonus Setup",
+      "details": "Modified target bonuses: 90% achieved -> 2000, 100% achieved -> 3500.",
+      "timestamp": "2026-06-04T09:33:30.908Z"
+    },
+    {
+      "id": "log-a1e5895d-ca6a-494b-91cc-57ab3f0c8534",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Update Incentive Setup",
+      "details": "Modified sequence percentage levels and floor bonuses for project ID 'proj-986ba878'.",
+      "timestamp": "2026-06-04T09:31:43.751Z"
+    },
+    {
+      "id": "log-940e5996-8591-4a7f-9219-95ccd3fee69a",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Executive",
+      "details": "Registered new Sales Executive 'Kawser Ahmed' (TPHL-0240).",
+      "timestamp": "2026-06-04T09:26:36.353Z"
+    },
+    {
+      "id": "log-d50166e3-b3e5-4f8a-9e17-5e25dd5c4a92",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Edit Project",
+      "details": "Updated project details for 'Residential (1550-  3200)'.",
+      "timestamp": "2026-06-04T09:24:57.341Z"
+    },
+    {
+      "id": "log-c1b37718-abbe-4c0f-a647-3dd7688e62f9",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Residential (1550-  3200)' (ID: proj-95b78023) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:24:09.633Z"
+    },
+    {
+      "id": "log-80d5f6df-8c19-4519-b3f8-f540fd414d4b",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Commercial (25K-28K)' (ID: proj-7716bd98) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:16:52.596Z"
+    },
+    {
+      "id": "log-3cddd46e-cc2b-429f-8560-1bfc52b4617d",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Commercial (20K-24K)' (ID: proj-51c3c903) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:16:02.999Z"
+    },
+    {
+      "id": "log-27fa4c55-d618-4e08-8480-630a8054ce31",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Residential  (1500 - 2500)' (ID: proj-7ba392c2) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:14:18.185Z"
+    },
+    {
+      "id": "log-c35fc3ff-1a1a-4583-9dc8-85e1f9e5ad0a",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Residential  (1000 - 1400)' (ID: proj-cb5fa4cf) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:11:31.538Z"
+    },
+    {
+      "id": "log-31cb1c9a-b902-45a5-ad48-773c6d98e83e",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Residential Studio  (500 - 900) ' (ID: proj-7fb4e9a6) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T09:02:39.801Z"
+    },
+    {
+      "id": "log-79305218-57bf-4fac-9921-82bf97ff3f7f",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Smart City (Commercial)' (ID: proj-d1cc1a49) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:59:17.204Z"
+    },
+    {
+      "id": "log-51f2da64-0f19-4b4a-832f-93f7ca9a6949",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Smart City (1900 - 5000)' (ID: proj-152782eb) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:57:13.863Z"
+    },
+    {
+      "id": "log-8e28f61c-0cbd-46d5-a07d-a8a485f71c1a",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Smart City (1200 - 1800)' (ID: proj-48cf126a) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:56:23.055Z"
+    },
+    {
+      "id": "log-7d1e41e5-8499-4be7-b549-e6f453062a24",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Smart City (Studio) (610 - 1199) ' (ID: proj-c6c8328d) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:55:28.864Z"
+    },
+    {
+      "id": "log-201f92d1-b5d2-43e9-b0fc-196c7f071a99",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Regular Project (1100 - 1600+)' (ID: proj-904b9770) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:07:19.626Z"
+    },
+    {
+      "id": "log-6815b27d-6f81-4e40-bab4-e8b9aff478d9",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Regular Project (1100 - 1600+)' (ID: proj-6cf6b0ba) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:07:18.222Z"
+    },
+    {
+      "id": "log-f3b65c34-2fe6-4bf7-9fd2-0bfea39b39a2",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "Add Project",
+      "details": "Added project 'Studio & Residence (345 - 1000) ' (ID: proj-986ba878) and created baseline incentive rules.",
+      "timestamp": "2026-06-04T08:06:06.537Z"
+    },
+    {
+      "id": "log-1",
+      "user_id": "u-admin",
+      "username": "Tariqul Islam (CEO)",
+      "role": "Admin",
+      "action": "System Initialization",
+      "details": "Clean database initialized for real sales operations.",
+      "timestamp": "2026-06-04T07:00:00Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif-b4b84a02-16e4-4397-9779-70604c21cb5f",
+      "title": "New Sale & Incentive Calculated",
+      "message": "Sales record created for 1 (Studio & Residence (345 - 1000) ). Generated incentive: 817 BDT.",
+      "type": "success",
+      "timestamp": "2026-06-04T10:25:27.339Z",
+      "read": false
+    },
+    {
+      "id": "notif-e0d5f875-0285-4376-99cc-6fc8c04d5050",
+      "title": "New Sale & Incentive Calculated",
+      "message": "Sales record created for 1 (Residential (1550-  3200)). Generated incentive: 52,152 BDT.",
+      "type": "success",
+      "timestamp": "2026-06-04T10:22:24.830Z",
+      "read": false
+    },
+    {
+      "id": "notif-c8663f4a-467d-46c0-91dc-d2e8077b6cf2",
+      "title": "New Sale & Incentive Calculated",
+      "message": "Sales record created for 1 (Regular Project (1100 - 1600+)). Generated incentive: 9,880 BDT.",
+      "type": "success",
+      "timestamp": "2026-06-04T10:21:59.499Z",
+      "read": false
+    },
+    {
+      "id": "notif-7a552eea-08c7-4532-b9c1-1fc9c317b2d5",
+      "title": "New Sale & Incentive Calculated",
+      "message": "Sales record created for 1 (Residential (1550-  3200)). Generated incentive: 26,076 BDT.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:59:53.600Z",
+      "read": false
+    },
+    {
+      "id": "notif-512e7190-6664-45d5-9ad9-54d299039af0",
+      "title": "New Project Created",
+      "message": "Project \"Commercial (29k-30k)\" has been registered in ATi Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:49:20.584Z",
+      "read": false
+    },
+    {
+      "id": "notif-687b3c27-22e4-4809-b5ca-ab6510ff0ce9",
+      "title": "New Project Created",
+      "message": "Project \"Residential (1550-  3200)\" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:24:09.634Z",
+      "read": false
+    },
+    {
+      "id": "notif-6398843b-c6c9-4985-94b6-abb9a1b9ab84",
+      "title": "New Project Created",
+      "message": "Project \"Commercial (25K-28K)\" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:16:52.596Z",
+      "read": false
+    },
+    {
+      "id": "notif-8eefe7fe-1c4c-4eb4-b8df-1f35047c1ead",
+      "title": "New Project Created",
+      "message": "Project \"Commercial (20K-24K)\" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:16:02.999Z",
+      "read": false
+    },
+    {
+      "id": "notif-6c7872b2-3f4f-41f4-b701-7b8fff8e0fcc",
+      "title": "New Project Created",
+      "message": "Project \"Residential  (1500 - 2500)\" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:14:18.186Z",
+      "read": false
+    },
+    {
+      "id": "notif-3f6b2a29-47c9-4cac-9561-190489f0877a",
+      "title": "New Project Created",
+      "message": "Project \"Residential  (1000 - 1400)\" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:11:31.539Z",
+      "read": false
+    },
+    {
+      "id": "notif-cc97c37c-6175-417c-9d85-bd3d6c303463",
+      "title": "New Project Created",
+      "message": "Project \"Residential Studio  (500 - 900) \" has been registered in Ati Bazar.",
+      "type": "success",
+      "timestamp": "2026-06-04T09:02:39.801Z",
+      "read": false
+    },
+    {
+      "id": "notif-7b2668fa-bcbd-4d1a-b887-6cfbd0267b31",
+      "title": "New Project Created",
+      "message": "Project \"Smart City (Commercial)\" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:59:17.204Z",
+      "read": false
+    },
+    {
+      "id": "notif-c8e2e6a6-bac0-4d09-b071-758a610c7b1a",
+      "title": "New Project Created",
+      "message": "Project \"Smart City (1900 - 5000)\" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:57:13.863Z",
+      "read": false
+    },
+    {
+      "id": "notif-7293ef2f-2869-47ee-b221-0f70bb9dd27f",
+      "title": "New Project Created",
+      "message": "Project \"Smart City (1200 - 1800)\" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:56:23.056Z",
+      "read": false
+    },
+    {
+      "id": "notif-2dd0003a-4995-4579-8088-bb481e260a9e",
+      "title": "New Project Created",
+      "message": "Project \"Smart City (Studio) (610 - 1199) \" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:55:28.864Z",
+      "read": false
+    },
+    {
+      "id": "notif-2ece3798-4c71-4ca6-ba04-1a6389ee3877",
+      "title": "New Project Created",
+      "message": "Project \"Regular Project (1100 - 1600+)\" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:07:19.626Z",
+      "read": false
+    },
+    {
+      "id": "notif-cecf78ed-d673-4c5e-b9e6-d211c743b51a",
+      "title": "New Project Created",
+      "message": "Project \"Regular Project (1100 - 1600+)\" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:07:18.223Z",
+      "read": false
+    },
+    {
+      "id": "notif-c3b358f0-651a-4469-b5cb-5bcfcc6d7236",
+      "title": "New Project Created",
+      "message": "Project \"Studio & Residence (345 - 1000) \" has been registered in Ashulia, Dhaka.",
+      "type": "success",
+      "timestamp": "2026-06-04T08:06:06.537Z",
+      "read": false
+    },
+    {
+      "id": "notif-1",
+      "title": "Production System Ready",
+      "message": "Database initialized. Create projects, define teams, assign executives, and register sales to get started.",
+      "type": "success",
+      "timestamp": "2026-06-04T07:01:00Z",
+      "read": false
+    }
+  ]
+}

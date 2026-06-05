@@ -1,0 +1,1278 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import express from 'express';
+import path from 'path';
+import crypto from 'crypto';
+import { createServer as createViteServer } from 'vite';
+import { 
+  getStore, 
+  writeStore, 
+  logAction, 
+  addNotification, 
+  recalculateAllIncentives,
+  recalculateAllIncentivesDirect
+} from './src/server/db';
+import { 
+  User, 
+  Project, 
+  SalesTeam, 
+  SalesExecutive, 
+  IncentiveRule, 
+  Sale 
+} from './src/types';
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // JSON Body Parser
+  app.use(express.json({ limit: '10mb' }));
+
+  // Helper middleware for custom Token authentication (mimicking JWT Bearer)
+  const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      res.status(401).json({ error: "Access denied. Auth token missing." });
+      return;
+    }
+
+    const store = getStore();
+    // In our JWT-mimic token system, the token is simply the user's ID
+    const user = store.users.find(u => u.id === token);
+    if (!user) {
+      res.status(403).json({ error: "Invalid token or session expired." });
+      return;
+    }
+
+    // Attach user to request
+    (req as any).user = user;
+    next();
+  };
+
+  // --- AUTHENTICATION API ---
+  app.post('/api/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    const store = getStore();
+    const user = store.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+    if (!user) {
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
+    }
+
+    // Checking seeded passwords
+    let isValid = false;
+    if (email === "admin@tphl.com" && password === "admin123") isValid = true;
+    else if (email === "leader@tphl.com" && password === "leader123") isValid = true;
+    else if (email === "executive@tphl.com" && password === "executive123") isValid = true;
+    else if (password === "password123") isValid = true; // Fallback for newly created demo users
+
+    if (!isValid) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+
+    logAction(user, "User Login", `Logged in successfully via JWT-mimic token.`);
+    res.json({
+      token: user.id, // User ID functions as our secure JWT-mimic token
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        employee_id: user.employee_id,
+        team_id: user.team_id
+      }
+    });
+  });
+
+  // Get currently logged-in user profile
+  app.get('/api/auth/me', authenticateToken, (req, res) => {
+    res.json({ user: (req as any).user });
+  });
+
+  // --- ANALYTICS & DASHBOARD API ---
+  app.get('/api/dashboard/analytics', authenticateToken, (req, res) => {
+    const store = getStore();
+    const curUser = (req as any).user as User;
+
+    let targetSales = [...store.sales];
+    let targetIncentives = [...store.salesIncentives];
+    let targetExecutives = [...store.salesExecutives];
+    let targetTeams = [...store.salesTeams];
+
+    // Role-Based Analytics Filtering:
+    // Team Leader sees only their own Team
+    if (curUser.role === 'Sales Team Leader') {
+      const leaderTeam = store.salesTeams.find(t => t.team_leader === curUser.name || t.id === curUser.team_id);
+      if (leaderTeam) {
+        const teamExecs = store.salesExecutives.filter(e => e.team_id === leaderTeam.id);
+        const teamExecIds = teamExecs.map(e => e.id);
+        
+        targetSales = store.sales.filter(s => teamExecIds.includes(s.executive_id));
+        targetIncentives = store.salesIncentives.filter(si => teamExecIds.includes(si.executive_id));
+        targetExecutives = teamExecs;
+        targetTeams = [leaderTeam];
+      }
+    } 
+    // Sales Executive sees only their own data
+    else if (curUser.role === 'Sales Executive') {
+      const exec = store.salesExecutives.find(e => e.employee_id === curUser.employee_id || e.id === curUser.id);
+      if (exec) {
+        targetSales = store.sales.filter(s => s.executive_id === exec.id);
+        targetIncentives = store.salesIncentives.filter(si => si.executive_id === exec.id);
+        targetExecutives = [exec];
+        targetTeams = [];
+      } else {
+        targetSales = [];
+        targetIncentives = [];
+        targetExecutives = [];
+        targetTeams = [];
+      }
+    }
+
+    // Calculations of top card items
+    const totalSalesCount = targetSales.length; 
+    const activeProjectsCount = store.projects.filter(p => p.status === 'Active').length;
+    const totalTeamsCount = targetTeams.length || store.salesTeams.length;
+    const totalExecutivesCount = targetExecutives.length;
+
+    // Total Incentive
+    const totalIncentivePaid = targetIncentives.reduce((sum, item) => sum + item.total_incentive, 0);
+    // Base Incentive vs Bonus Breakdown
+    const totalBaseIncentive = targetIncentives.reduce((sum, item) => sum + item.base_incentive, 0);
+    const totalBonuses = targetIncentives.reduce((sum, item) => sum + item.floor_bonus + item.target_bonus + item.team_bonus, 0);
+
+    // Dynamic Top Stats
+    // 1. Top Seller (Executive with highest sales volume = sales count * Land Share Amount, or just count)
+    const execSalesMap: Record<string, { name: string; count: number; volume: number }> = {};
+    targetSales.forEach(sale => {
+      const exec = store.salesExecutives.find(e => e.id === sale.executive_id);
+      const proj = store.projects.find(p => p.id === sale.project_id);
+      if (!exec || !proj) return;
+      if (!execSalesMap[exec.id]) {
+        execSalesMap[exec.id] = { name: exec.name, count: 0, volume: 0 };
+      }
+      execSalesMap[exec.id].count += 1;
+      execSalesMap[exec.id].volume += proj.land_share_amount;
+    });
+
+    let topSeller = "None";
+    let topSellerVal = 0;
+    Object.values(execSalesMap).forEach(item => {
+      if (item.volume > topSellerVal) {
+        topSellerVal = item.volume;
+        topSeller = `${item.name} (${item.count} Sales)`;
+      }
+    });
+
+    // 2. Top Incentive Earner
+    const execIncentiveMap: Record<string, { name: string; total: number }> = {};
+    targetIncentives.forEach(inc => {
+      const exec = store.salesExecutives.find(e => e.id === inc.executive_id);
+      if (!exec) return;
+      if (!execIncentiveMap[exec.id]) {
+        execIncentiveMap[exec.id] = { name: exec.name, total: 0 };
+      }
+      execIncentiveMap[exec.id].total += inc.total_incentive;
+    });
+
+    let topEarner = "None";
+    let topEarnerVal = 0;
+    Object.values(execIncentiveMap).forEach(item => {
+      if (item.total > topEarnerVal) {
+        topEarnerVal = item.total;
+        topEarner = `${item.name} (${item.total.toLocaleString()} BDT)`;
+      }
+    });
+
+    // 3. Highest Incentive Project
+    const projIncentiveMap: Record<string, { name: string; total: number }> = {};
+    targetIncentives.forEach(inc => {
+      const proj = store.projects.find(p => p.id === inc.project_id);
+      if (!proj) return;
+      if (!projIncentiveMap[proj.id]) {
+        projIncentiveMap[proj.id] = { name: proj.project_name, total: 0 };
+      }
+      projIncentiveMap[proj.id].total += inc.total_incentive;
+    });
+
+    let topProject = "None";
+    let topProjectVal = 0;
+    Object.values(projIncentiveMap).forEach(item => {
+      if (item.total > topProjectVal) {
+        topProjectVal = item.total;
+        topProject = `${item.name} (${item.total.toLocaleString()} BDT)`;
+      }
+    });
+
+    // 4. Top Sales Team & Team Incentive
+    const teamIncentivesMap: Record<string, { name: string; total: number }> = {};
+    targetIncentives.forEach(inc => {
+      const exec = store.salesExecutives.find(e => e.id === inc.executive_id);
+      if (!exec || !exec.team_id) return;
+      const team = store.salesTeams.find(t => t.id === exec.team_id);
+      if (!team) return;
+      if (!teamIncentivesMap[team.id]) {
+        teamIncentivesMap[team.id] = { name: team.team_name, total: 0 };
+      }
+      teamIncentivesMap[team.id].total += inc.total_incentive;
+    });
+
+    let topTeam = "None";
+    let topTeamVal = 0;
+    Object.values(teamIncentivesMap).forEach(item => {
+      if (item.total > topTeamVal) {
+        topTeamVal = item.total;
+        topTeam = `${item.name} (${item.total.toLocaleString()} BDT)`;
+      }
+    });
+
+    // Target Achievement Summary (Monthly)
+    // Find rates of executive target achievements based on the latest logged sale month, or default to current month
+    let testMonth = new Date().getMonth() + 1;
+    let testYear = new Date().getFullYear();
+
+    if (targetSales.length > 0) {
+      const sortedSales = [...targetSales].sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
+      const latestDate = new Date(sortedSales[0].sale_date);
+      if (!isNaN(latestDate.getTime())) {
+        testMonth = latestDate.getMonth() + 1;
+        testYear = latestDate.getFullYear();
+      }
+    }
+
+    const monthsName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const periodName = `${monthsName[testMonth - 1] || "Latest Month"} ${testYear}`;
+
+    const execAchievementRates = targetExecutives.map(exec => {
+      const filtered = targetSales.filter(s => {
+        const d = new Date(s.sale_date);
+        return s.executive_id === exec.id && (d.getMonth() + 1 === testMonth) && d.getFullYear() === testYear;
+      });
+      // Count flats sold
+      const countFlats = filtered.length;
+
+      const percent = exec.target > 0 ? (countFlats / exec.target) * 100 : 0;
+      return {
+        id: exec.id,
+        name: exec.name,
+        target: exec.target,
+        achieved: countFlats,
+        percentage: percent
+      };
+    });
+
+    // Timeline datasets for Charts (Timeline by Month)
+    // Group monthly timeline: April, May, June 2026
+    const monthlySeries: Record<string, { monthName: string; sales: number; incentive: number; count: number }> = {};
+    
+    // Default months to show
+    const defaultMonths = [4, 5, 6]; // Apr, May, Jun
+    defaultMonths.forEach(m => {
+      const key = `2026-${m}`;
+      monthlySeries[key] = {
+        monthName: `${monthsName[m-1]} 2026`,
+        sales: 0,
+        incentive: 0,
+        count: 0
+      };
+    });
+
+    targetSales.forEach(sale => {
+      const pDate = new Date(sale.sale_date);
+      const m = pDate.getMonth() + 1;
+      const y = pDate.getFullYear();
+      const key = `${y}-${m}`;
+      
+      const proj = store.projects.find(p => p.id === sale.project_id);
+      const saleVal = proj ? proj.land_share_amount : 0;
+
+      if (!monthlySeries[key]) {
+        monthlySeries[key] = {
+          monthName: `${monthsName[m-1]} ${y}`,
+          sales: 0,
+          incentive: 0,
+          count: 0
+        };
+      }
+      monthlySeries[key].sales += saleVal;
+      monthlySeries[key].count += 1;
+    });
+
+    targetIncentives.forEach(inc => {
+      const key = `${inc.year}-${inc.month}`;
+      if (monthlySeries[key]) {
+        monthlySeries[key].incentive += inc.total_incentive;
+      }
+    });
+
+    const chartTimeline = Object.entries(monthlySeries)
+      .map(([key, val]) => ({
+        key,
+        ...val
+      }))
+      .sort((a, b) => {
+        const [yA, mA] = a.key.split('-').map(Number);
+        const [yB, mB] = b.key.split('-').map(Number);
+        return yA !== yB ? yA - yB : mA - mB;
+      });
+
+    // Project Wise Sales chart
+    const projectSalesChartList = store.projects.map(proj => {
+      const projSales = targetSales.filter(s => s.project_id === proj.id);
+      const projSalesVal = projSales.length * proj.land_share_amount;
+
+      // Group executive contributions
+      const execContributionsMap: Record<string, { id: string; name: string; employee_id: string; count: number; salesVal: number }> = {};
+      projSales.forEach(s => {
+        const exec = store.salesExecutives.find(e => e.id === s.executive_id);
+        if (!exec) return;
+        if (!execContributionsMap[exec.id]) {
+          execContributionsMap[exec.id] = { id: exec.id, name: exec.name, employee_id: exec.employee_id, count: 0, salesVal: 0 };
+        }
+        execContributionsMap[exec.id].count += 1;
+        execContributionsMap[exec.id].salesVal += proj.land_share_amount;
+      });
+      const execContributions = Object.values(execContributionsMap);
+
+      // Status splits
+      const totalUnits = proj.total_flats || proj.units || 10;
+      const soldUnits = projSales.length;
+      const remainingUnits = Math.max(totalUnits - soldUnits, 0);
+
+      const soldUnitsList = projSales.map(s => {
+        const exec = store.salesExecutives.find(e => e.id === s.executive_id);
+        return {
+          id: s.id,
+          unit_name: s.unit_name,
+          floor_number: s.floor_number,
+          sale_date: s.sale_date,
+          executive_name: exec ? exec.name : 'Unknown'
+        };
+      });
+
+      return {
+        id: proj.id,
+        name: proj.project_name,
+        location: proj.location,
+        sales: projSalesVal,
+        count: projSales.length,
+        totalUnits,
+        soldUnits,
+        remainingUnits,
+        execContributions,
+        soldUnitsList,
+        registration: proj.registration || 'Yes'
+      };
+    });
+
+    // Team Wise Incentive chart
+    const teamIncentiveChartList = (targetTeams.length ? targetTeams : store.salesTeams).map(team => {
+      const execIds = store.salesExecutives.filter(e => e.team_id === team.id).map(e => e.id);
+      const teamIncs = targetIncentives.filter(si => execIds.includes(si.executive_id));
+      const teamIncTotal = teamIncs.reduce((sum, item) => sum + item.total_incentive, 0);
+      return {
+        id: team.id,
+        name: team.team_name,
+        incentive: teamIncTotal
+      };
+    });
+
+    res.json({
+      cards: {
+        totalSales: totalSalesCount,
+        totalSalesValue: targetSales.reduce((sum, s) => sum + (store.projects.find(p => p.id === s.project_id)?.land_share_amount || 0), 0),
+        totalIncentivePaid,
+        totalBaseIncentive,
+        totalBonuses,
+        totalTeamsCount,
+        totalExecutivesCount,
+        activeProjectsCount
+      },
+      tops: {
+        topSeller,
+        topSellerVal,
+        topEarner,
+        topEarnerVal,
+        topProject,
+        topProjectVal,
+        topTeam,
+        topTeamVal
+      },
+      charts: {
+        timeline: chartTimeline,
+        projects: projectSalesChartList,
+        teams: teamIncentiveChartList
+      },
+      execAchievements: execAchievementRates,
+      execAchievementsPeriod: periodName
+    });
+  });
+
+  // --- PROJECT MANAGEMENT API ---
+  app.get('/api/projects', authenticateToken, (req, res) => {
+    const store = getStore();
+    res.json(store.projects);
+  });
+
+  app.post('/api/projects', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can managed projects." });
+      return;
+    }
+
+    const { project_name, location, unit_measure, floors, units, total_flats, land_share_amount, first_sale_date, status, registration } = req.body;
+    if (!project_name || !location || !unit_measure || !land_share_amount) {
+      res.status(400).json({ error: "Missing required fields" });
+      return;
+    }
+
+    const store = getStore();
+    const pid = `proj-${crypto.randomUUID().slice(0, 8)}`;
+    const newProject: Project = {
+      id: pid,
+      project_name,
+      location,
+      unit_measure: String(unit_measure),
+      floors: Number(floors || 1),
+      units: Number(units || 0),
+      total_flats: Number(total_flats || units || 0),
+      land_share_amount: Number(land_share_amount),
+      first_sale_date: first_sale_date || new Date().toISOString().split('T')[0],
+      status: status || 'Active',
+      registration: registration || 'Yes',
+      created_at: new Date().toISOString()
+    };
+
+    // Auto-create standard Incentive rule for this project
+    const newRule: IncentiveRule = {
+      id: `rule-${crypto.randomUUID().slice(0, 8)}`,
+      project_id: pid,
+      sale_1_percent: 2.0,
+      sale_2_percent: 2.2,
+      sale_3_percent: 2.5,
+      sale_4_percent: 2.8,
+      sale_5_percent: 3.0,
+      sale_6_percent: 3.2,
+      sale_7_percent: 3.5,
+      first_floor_bonus_percent: 0.5,
+      top_floor_bonus_percent: 0.5,
+      created_at: new Date().toISOString()
+    };
+
+    store.projects.push(newProject);
+    store.incentiveRules.push(newRule);
+    writeStore(store);
+
+    logAction(user, "Add Project", `Added project '${project_name}' (ID: ${pid}) and created baseline incentive rules.`);
+    addNotification("New Project Created", `Project "${project_name}" has been registered in ${location}.`, 'success');
+
+    res.status(201).json(newProject);
+  });
+
+  app.put('/api/projects/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only admins can execute this action" });
+      return;
+    }
+
+    const store = getStore();
+    const pIndex = store.projects.findIndex(p => p.id === req.params.id);
+    if (pIndex === -1) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    const updated = {
+      ...store.projects[pIndex],
+      ...req.body,
+      // Force correct types
+      unit_measure: String(req.body.unit_measure !== undefined ? req.body.unit_measure : store.projects[pIndex].unit_measure),
+      floors: Number(req.body.floors !== undefined ? req.body.floors : store.projects[pIndex].floors),
+      units: Number(req.body.units !== undefined ? req.body.units : store.projects[pIndex].units),
+      total_flats: Number(req.body.total_flats !== undefined ? req.body.total_flats : store.projects[pIndex].total_flats),
+      land_share_amount: Number(req.body.land_share_amount !== undefined ? req.body.land_share_amount : store.projects[pIndex].land_share_amount),
+      registration: req.body.registration !== undefined ? req.body.registration : (store.projects[pIndex].registration || 'Yes')
+    };
+
+    store.projects[pIndex] = updated;
+    writeStore(store);
+
+    // Recompute all incentives because Land Share Amount or Floor levels changed
+    recalculateAllIncentives();
+
+    logAction(user, "Edit Project", `Updated project details for '${updated.project_name}'.`);
+    res.json(updated);
+  });
+
+  app.delete('/api/projects/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only admins can perform deletion." });
+      return;
+    }
+
+    const store = getStore();
+    const proj = store.projects.find(p => p.id === req.params.id);
+    if (!proj) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    // Cascade-delete any associated sales instead of failing
+    store.sales = store.sales.filter(s => s.project_id !== req.params.id);
+
+    store.projects = store.projects.filter(p => p.id !== req.params.id);
+    store.incentiveRules = store.incentiveRules.filter(r => r.project_id !== req.params.id);
+    store.teamProjects = store.teamProjects.filter(tp => tp.project_id !== req.params.id);
+    
+    // Recalculate remaining incentives since we removed possible sales
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    logAction(user, "Delete Project", `Deleted project '${proj.project_name}' (ID: ${req.params.id}) and all associated sales.`);
+    res.json({ message: "Project deleted successfully" });
+  });
+
+  // --- SALES TEAM MANAGEMENT API ---
+  app.get('/api/teams', authenticateToken, (req, res) => {
+    const store = getStore();
+    // Resolve project bindings for each team
+    const result = store.salesTeams.map(t => {
+      const bindings = store.teamProjects.filter(tp => tp.team_id === t.id);
+      const projects = bindings.map(b => store.projects.find(p => p.id === b.project_id)).filter(Boolean);
+      return {
+        ...t,
+        assigned_projects: projects
+      };
+    });
+    res.json(result);
+  });
+
+  app.post('/api/teams', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const { team_name, team_leader, sales_target, assigned_project_ids } = req.body;
+    if (!team_name || !team_leader) {
+      res.status(400).json({ error: "Team Name and Leader are required" });
+      return;
+    }
+
+    const store = getStore();
+    const tid = `team-${crypto.randomUUID().slice(0, 8)}`;
+    const newTeam: SalesTeam = {
+      id: tid,
+      team_name,
+      team_leader,
+      sales_target: Number(sales_target || 0)
+    };
+
+    store.salesTeams.push(newTeam);
+
+    // Save assigned project associations
+    if (Array.isArray(assigned_project_ids)) {
+      assigned_project_ids.forEach(pId => {
+        store.teamProjects.push({
+          id: `tp-${crypto.randomUUID().slice(0, 8)}`,
+          team_id: tid,
+          project_id: pId
+        });
+      });
+    }
+
+    writeStore(store);
+    logAction(user, "Create Team", `Created Sales Team '${team_name}' headed by ${team_leader}.`);
+    res.status(201).json(newTeam);
+  });
+
+  app.put('/api/teams/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    const tIndex = store.salesTeams.findIndex(t => t.id === req.params.id);
+    if (tIndex === -1) {
+      res.status(404).json({ error: "Team not found" });
+      return;
+    }
+
+    const { team_name, team_leader, sales_target, assigned_project_ids } = req.body;
+    
+    // Update team
+    store.salesTeams[tIndex] = {
+      ...store.salesTeams[tIndex],
+      team_name: team_name || store.salesTeams[tIndex].team_name,
+      team_leader: team_leader || store.salesTeams[tIndex].team_leader,
+      sales_target: Number(sales_target !== undefined ? sales_target : store.salesTeams[tIndex].sales_target)
+    };
+
+    // Update team projects
+    if (Array.isArray(assigned_project_ids)) {
+      // Clear old
+      store.teamProjects = store.teamProjects.filter(tp => tp.team_id !== req.params.id);
+      // Insert new
+      assigned_project_ids.forEach(pId => {
+        store.teamProjects.push({
+          id: `tp-${crypto.randomUUID().slice(0, 8)}`,
+          team_id: req.params.id,
+          project_id: pId
+        });
+      });
+    }
+
+    writeStore(store);
+    
+    // Recalculate target bonuses
+    recalculateAllIncentives();
+
+    logAction(user, "Edit Team", `Modified Sales Team '${store.salesTeams[tIndex].team_name}'.`);
+    res.json(store.salesTeams[tIndex]);
+  });
+
+  app.delete('/api/teams/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    const team = store.salesTeams.find(t => t.id === req.params.id);
+    if (!team) {
+      res.status(404).json({ error: "Sales team not found" });
+      return;
+    }
+
+    // Unlink Executives
+    store.salesExecutives.forEach(e => {
+      if (e.team_id === req.params.id) {
+        e.team_id = ""; // Unassigned
+      }
+    });
+
+    store.salesTeams = store.salesTeams.filter(t => t.id !== req.params.id);
+    store.teamProjects = store.teamProjects.filter(tp => tp.team_id !== req.params.id);
+
+    writeStore(store);
+    logAction(user, "Delete Team", `Deleted sales team '${team.team_name}'.`);
+    res.json({ message: "Team deleted successfully" });
+  });
+
+  // --- SALES EXECUTIVE MANAGEMENT API ---
+  app.get('/api/executives', authenticateToken, (req, res) => {
+    const store = getStore();
+    // Resolve helper fields for UI
+    const result = store.salesExecutives.map(e => {
+      const team = store.salesTeams.find(t => t.id === e.team_id);
+      const proj = store.projects.find(p => p.id === e.project_id);
+      return {
+        ...e,
+        team_name: team ? team.team_name : 'Unassigned',
+        project_name: proj ? proj.project_name : 'None Assigned'
+      };
+    });
+    res.json(result);
+  });
+
+  app.post('/api/executives', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin credentials required" });
+      return;
+    }
+
+    const { employee_id, name, team_id, project_id, target, joining_date } = req.body;
+    if (!employee_id || !name) {
+      res.status(400).json({ error: "Employee ID and Name are required" });
+      return;
+    }
+
+    const store = getStore();
+    
+    // Check if ID is redundant
+    const duplicate = store.salesExecutives.some(e => e.employee_id.toLowerCase() === employee_id.toLowerCase());
+    if (duplicate) {
+      res.status(400).json({ error: `An executive with ID '${employee_id}' already exists.` });
+      return;
+    }
+
+    const eid = `exec-${crypto.randomUUID().slice(0, 8)}`;
+    const newExec: SalesExecutive = {
+      id: eid,
+      employee_id,
+      name,
+      team_id: team_id || "",
+      project_id: project_id || "",
+      target: Number(target || 0),
+      joining_date: joining_date || new Date().toISOString().split('T')[0]
+    };
+
+    // Auto-create standard User profile for login as this executive
+    const newAcct: User = {
+      id: eid,
+      email: `${employee_id.toLowerCase()}@tphl.com`,
+      name,
+      role: "Sales Executive",
+      employee_id,
+      team_id: team_id || "",
+      created_at: new Date().toISOString()
+    };
+
+    store.salesExecutives.push(newExec);
+    store.users.push(newAcct);
+    
+    writeStore(store);
+    logAction(user, "Add Executive", `Registered new Sales Executive '${name}' (${employee_id}).`);
+    res.status(201).json(newExec);
+  });
+
+  app.post('/api/executives/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin credentials required" });
+      return;
+    }
+
+    const { executives } = req.body;
+    if (!executives || !Array.isArray(executives)) {
+      res.status(400).json({ error: "An array of executives is required" });
+      return;
+    }
+
+    const store = getStore();
+    const imported: any[] = [];
+    const skipped: string[] = [];
+
+    for (const execData of executives) {
+      const { employee_id, name, team_name, project_name, target, joining_date } = execData;
+
+      if (!employee_id || !name) {
+        skipped.push(`${employee_id || "Unknown"} (Missing required fields)`);
+        continue;
+      }
+
+      // Check if employee_id already exists in store and current batch
+      const isDupe = store.salesExecutives.some(e => e.employee_id.toLowerCase() === employee_id.toLowerCase()) ||
+                    imported.some(e => e.employee_id.toLowerCase() === employee_id.toLowerCase());
+      if (isDupe) {
+        skipped.push(`${employee_id} (Duplicate ID)`);
+        continue;
+      }
+
+      // Resolve team_id from team_name
+      let resolvedTeamId = "";
+      if (team_name) {
+        const team = store.salesTeams.find(t => t.team_name.toLowerCase().trim() === team_name.toLowerCase().trim());
+        if (team) {
+          resolvedTeamId = team.id;
+        }
+      }
+
+      // Resolve project_id from project_name
+      let resolvedProjectId = "";
+      if (project_name) {
+        const proj = store.projects.find(p => p.project_name.toLowerCase().trim() === project_name.toLowerCase().trim());
+        if (proj) {
+          resolvedProjectId = proj.id;
+        }
+      }
+
+      const eid = `exec-${crypto.randomUUID().slice(0, 8)}`;
+      const newExec: SalesExecutive = {
+        id: eid,
+        employee_id,
+        name,
+        team_id: resolvedTeamId,
+        project_id: resolvedProjectId,
+        target: Number(target !== undefined ? target : 2),
+        joining_date: joining_date || new Date().toISOString().split('T')[0]
+      };
+
+      const newAcct: User = {
+        id: eid,
+        email: `${employee_id.toLowerCase()}@tphl.com`,
+        name,
+        role: "Sales Executive",
+        employee_id,
+        team_id: resolvedTeamId,
+        created_at: new Date().toISOString()
+      };
+
+      store.salesExecutives.push(newExec);
+      store.users.push(newAcct);
+      imported.push(newExec);
+    }
+
+    writeStore(store);
+    
+    if (imported.length > 0) {
+      logAction(user, "Add Executive Bulk", `Registered ${imported.length} Sales Executives via CSV importation.`);
+    }
+
+    res.status(200).json({
+      success: true,
+      importedCount: imported.length,
+      skippedCount: skipped.length,
+      skippedDetails: skipped,
+      imported
+    });
+  });
+
+  app.put('/api/executives/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    const eIndex = store.salesExecutives.findIndex(e => e.id === req.params.id);
+    if (eIndex === -1) {
+      res.status(404).json({ error: "Sales Executive not found" });
+      return;
+    }
+
+    const updated = {
+      ...store.salesExecutives[eIndex],
+      ...req.body,
+      target: Number(req.body.target !== undefined ? req.body.target : store.salesExecutives[eIndex].target)
+    };
+
+    store.salesExecutives[eIndex] = updated;
+
+    // Sync team_id and role variables to user account too
+    const uIndex = store.users.findIndex(u => u.id === req.params.id || u.employee_id === updated.employee_id);
+    if (uIndex !== -1) {
+      store.users[uIndex].name = updated.name;
+      store.users[uIndex].team_id = updated.team_id;
+    }
+
+    writeStore(store);
+    
+    // Recalculate target calculations
+    recalculateAllIncentives();
+
+    logAction(user, "Edit Executive", `Updated files for Executive '${updated.name}'.`);
+    res.json(updated);
+  });
+
+  app.delete('/api/executives/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    const exec = store.salesExecutives.find(e => e.id === req.params.id);
+    if (!exec) {
+      res.status(404).json({ error: "Executive not found" });
+      return;
+    }
+
+    // Ensure Sales are not corrupted
+    const hasSales = store.sales.some(s => s.executive_id === req.params.id);
+    if (hasSales) {
+      res.status(400).json({ error: "Cannot delete Executive with registered sales entries. Reassign or delete those entries first." });
+      return;
+    }
+
+    store.salesExecutives = store.salesExecutives.filter(e => e.id !== req.params.id);
+    store.users = store.users.filter(u => u.id !== req.params.id && u.employee_id !== exec.employee_id);
+
+    writeStore(store);
+    logAction(user, "Delete Executive", `Deleted record of executive '${exec.name}'.`);
+    res.json({ message: "Executive deleted successfully" });
+  });
+
+  // --- INCENTIVE CALCULATION SETUP API ---
+  app.get('/api/rules', authenticateToken, (req, res) => {
+    const store = getStore();
+    res.json({
+      projectRules: store.incentiveRules,
+      bonusRules: store.bonusRules
+    });
+  });
+
+  app.put('/api/rules/project/:project_id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    let rIndex = store.incentiveRules.findIndex(r => r.project_id === req.params.project_id);
+
+    const data = {
+      sale_1_percent: Number(req.body.sale_1_percent),
+      sale_2_percent: Number(req.body.sale_2_percent),
+      sale_3_percent: Number(req.body.sale_3_percent),
+      sale_4_percent: Number(req.body.sale_4_percent),
+      sale_5_percent: Number(req.body.sale_5_percent),
+      sale_6_percent: Number(req.body.sale_6_percent),
+      sale_7_percent: Number(req.body.sale_7_percent),
+      first_floor_bonus_percent: Number(req.body.first_floor_bonus_percent),
+      top_floor_bonus_percent: Number(req.body.top_floor_bonus_percent),
+    };
+
+    if (rIndex === -1) {
+      const newRule: IncentiveRule = {
+        id: `rule-${crypto.randomUUID().slice(0, 8)}`,
+        project_id: req.params.project_id,
+        ...data,
+        created_at: new Date().toISOString()
+      };
+      store.incentiveRules.push(newRule);
+    } else {
+      store.incentiveRules[rIndex] = {
+        ...store.incentiveRules[rIndex],
+        ...data
+      };
+    }
+
+    writeStore(store);
+    recalculateAllIncentives(); // Auto Re-calculates on setup edit
+
+    logAction(user, "Update Incentive Setup", `Modified sequence percentage levels and floor bonuses for project ID '${req.params.project_id}'.`);
+    res.json({ success: true, message: "Rule updated successfully and incentives recalculated." });
+  });
+
+  app.put('/api/rules/global-bonus', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const store = getStore();
+    store.bonusRules = {
+      target_90_bonus: Number(req.body.target_90_bonus || store.bonusRules.target_90_bonus),
+      target_100_bonus: Number(req.body.target_100_bonus || store.bonusRules.target_100_bonus),
+      team_target_bonus: Number(req.body.team_target_bonus || store.bonusRules.team_target_bonus),
+    };
+
+    writeStore(store);
+    recalculateAllIncentives(); // Auto recalculate is standard feature!
+
+    logAction(user, "Update Global Bonus Setup", `Modified target bonuses: 90% achieved -> ${store.bonusRules.target_90_bonus}, 100% achieved -> ${store.bonusRules.target_100_bonus}.`);
+    res.json({ success: true, bonusRules: store.bonusRules });
+  });
+
+  // --- SALES ENTRY MODULE API ---
+  app.get('/api/sales', authenticateToken, (req, res) => {
+    const store = getStore();
+    const curUser = (req as any).user;
+
+    let list = [...store.sales];
+
+    // Filter list for Leader (only their team's developers) or Executive (only themselves)
+    if (curUser.role === 'Sales Team Leader') {
+      const leaderTeamId = curUser.team_id;
+      if (leaderTeamId) {
+        const teamExecs = store.salesExecutives.filter(e => e.team_id === leaderTeamId).map(e => e.id);
+        list = list.filter(s => teamExecs.includes(s.executive_id));
+      }
+    } else if (curUser.role === 'Sales Executive') {
+      const exec = store.salesExecutives.find(e => e.employee_id === curUser.employee_id || e.id === curUser.id);
+      if (exec) {
+        list = list.filter(s => s.executive_id === exec.id);
+      } else {
+        list = [];
+      }
+    }
+
+    const resolved = list.map(s => {
+      const proj = store.projects.find(p => p.id === s.project_id);
+      const exec = store.salesExecutives.find(e => e.id === s.executive_id);
+      return {
+        ...s,
+        project_name: proj ? proj.project_name : 'Deleted Project',
+        land_share_amount: proj ? proj.land_share_amount : 0,
+        executive_name: exec ? exec.name : 'Unknown Executive'
+      };
+    });
+
+    res.json(resolved);
+  });
+
+  app.post('/api/sales', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    
+    // Sales Executive or Admin can enter sales
+    const { project_id, unit_name, unit_measure, floor_number, sale_date, executive_id } = req.body;
+    if (!project_id || !unit_name || !unit_measure || !floor_number || !sale_date || !executive_id) {
+      res.status(400).json({ error: "Missing required sales fields." });
+      return;
+    }
+
+    const store = getStore();
+
+    // Verify Project
+    const proj = store.projects.find(p => p.id === project_id);
+    if (!proj) {
+      res.status(400).json({ error: "Project specified does not exist." });
+      return;
+    }
+
+    // Verify Executive
+    const exec = store.salesExecutives.find(e => e.id === executive_id);
+    if (!exec) {
+      res.status(400).json({ error: "Sales Executive specified does not exist." });
+      return;
+    }
+
+    const sid = `sale-${crypto.randomUUID().slice(0, 8)}`;
+    const newSale: Sale = {
+      id: sid,
+      project_id,
+      unit_name,
+      unit_measure: String(unit_measure),
+      floor_number: Number(floor_number),
+      sale_number: 1, // Will be computed chronologically in recalculation
+      sale_date,
+      executive_id
+    };
+
+    store.sales.push(newSale);
+    
+    // Auto calculate
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    const logMsg = `Added sales entry for unit '${unit_name}' in project '${proj.project_name}' sold by ${exec.name}.`;
+    logAction(user, "Sales Entry", logMsg);
+    
+    const computedIncentiveObj = store.salesIncentives.find(si => si.sale_id === sid);
+    const amountStr = computedIncentiveObj ? computedIncentiveObj.total_incentive.toLocaleString() : "0";
+    addNotification("New Sale & Incentive Calculated", `Sales record created for ${unit_name} (${proj.project_name}). Generated incentive: ${amountStr} BDT.`, 'success');
+
+    res.status(201).json(newSale);
+  });
+
+  app.put('/api/sales/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    const store = getStore();
+    const sIndex = store.sales.findIndex(s => s.id === req.params.id);
+
+    if (sIndex === -1) {
+      res.status(404).json({ error: "Sales entry not found." });
+      return;
+    }
+
+    // Ensure Role checks: Executive can edit only their own entries
+    if (user.role === 'Sales Executive') {
+      const exec = store.salesExecutives.find(e => e.employee_id === user.employee_id || e.id === user.id);
+      if (!exec || store.sales[sIndex].executive_id !== exec.id) {
+        res.status(403).json({ error: "Access denied. You can only edit your own entries." });
+        return;
+      }
+    }
+
+    const updated = {
+      ...store.sales[sIndex],
+      ...req.body,
+      unit_measure: req.body.unit_measure !== undefined ? String(req.body.unit_measure) : store.sales[sIndex].unit_measure,
+      floor_number: Number(req.body.floor_number || store.sales[sIndex].floor_number)
+    };
+
+    store.sales[sIndex] = updated;
+
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    logAction(user, "Edit Sale", `Edited sale record for ID '${req.params.id}'.`);
+    res.json(updated);
+  });
+
+  app.delete('/api/sales/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    const store = getStore();
+    const sale = store.sales.find(s => s.id === req.params.id);
+
+    if (!sale) {
+      res.status(404).json({ error: "Sales entry not found." });
+      return;
+    }
+
+    // Auth validation
+    if (user.role === 'Sales Executive') {
+      const exec = store.salesExecutives.find(e => e.employee_id === user.employee_id || e.id === user.id);
+      if (!exec || sale.executive_id !== exec.id) {
+        res.status(403).json({ error: "Forbidden. You can only delete your own entry." });
+        return;
+      }
+    }
+
+    store.sales = store.sales.filter(s => s.id !== req.params.id);
+    store.salesIncentives = store.salesIncentives.filter(si => si.sale_id !== req.params.id);
+
+    // Dynamic chronological sale number re-indexing
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    logAction(user, "Delete Sale", `Deleted sale entry ID '${req.params.id}'.`);
+    res.json({ message: "Sales entry successfully deleted" });
+  });
+
+  // --- SALES INCENTIVE MODULE & REPORTS API ---
+  app.get('/api/incentives', authenticateToken, (req, res) => {
+    const store = getStore();
+    const curUser = (req as any).user;
+
+    let targetIncentives = [...store.salesIncentives];
+
+    // Filter list for Leader or Executive
+    if (curUser.role === 'Sales Team Leader') {
+      const leaderTeamId = curUser.team_id;
+      if (leaderTeamId) {
+        const teamExecs = store.salesExecutives.filter(e => e.team_id === leaderTeamId).map(e => e.id);
+        targetIncentives = targetIncentives.filter(si => teamExecs.includes(si.executive_id));
+      }
+    } else if (curUser.role === 'Sales Executive') {
+      const exec = store.salesExecutives.find(e => e.employee_id === curUser.employee_id || e.id === curUser.id);
+      if (exec) {
+        targetIncentives = targetIncentives.filter(si => si.executive_id === exec.id);
+      } else {
+        targetIncentives = [];
+      }
+    }
+
+    // Resolve details for visual grids
+    const resolved = targetIncentives.map(inc => {
+      const sale = store.sales.find(s => s.id === inc.sale_id);
+      const exec = store.salesExecutives.find(e => e.id === inc.executive_id);
+      const team = exec ? store.salesTeams.find(t => t.id === exec.team_id) : null;
+      const proj = store.projects.find(p => p.id === inc.project_id);
+
+      return {
+        ...inc,
+        sale_date: sale ? sale.sale_date : '',
+        unit_name: sale ? sale.unit_name : 'N/A',
+        floor_number: sale ? sale.floor_number : 0,
+        executive_name: exec ? exec.name : 'Unknown Executive',
+        employee_id: exec ? exec.employee_id : 'N/A',
+        team_name: team ? team.team_name : 'No Team',
+        project_name: proj ? proj.project_name : 'Deleted Project',
+        land_share_amount: proj ? proj.land_share_amount : 0
+      };
+    });
+
+    const finalIncentives = resolved.filter(inc => {
+      const proj = store.projects.find(p => p.id === inc.project_id);
+      return !proj || proj.registration !== 'No';
+    });
+
+    res.json(finalIncentives);
+  });
+
+  // --- SYSTEM SETTINGS, BACKUP & RESTORE APP ---
+  app.get('/api/system/logs', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin rights required" });
+      return;
+    }
+    const store = getStore();
+    res.json(store.auditLogs);
+  });
+
+  app.get('/api/system/notifications', authenticateToken, (req, res) => {
+    const store = getStore();
+    res.json(store.notifications);
+  });
+
+  app.post('/api/system/notifications/clear', authenticateToken, (req, res) => {
+    const store = getStore();
+    store.notifications = store.notifications.map(n => ({ ...n, read: true }));
+    writeStore(store);
+    res.json({ success: true });
+  });
+
+  // Complete Database Backup (Download)
+  app.get('/api/system/backup', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    const store = getStore();
+    logAction(user, "Database Backup", "Downloaded a database state backup.");
+    res.json(store);
+  });
+
+  // Database Restore (Upload/Import)
+  app.post('/api/system/restore', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+
+    const backupData = req.body;
+    if (!backupData || typeof backupData !== 'object') {
+      res.status(400).json({ error: "Invalid backup dataset format provided." });
+      return;
+    }
+
+    // Basic structure verification
+    if (!backupData.projects || !backupData.salesExecutives || !backupData.salesTeams) {
+      res.status(400).json({ error: "Verification failed. Essential relational schemas missing." });
+      return;
+    }
+
+    writeStore(backupData);
+    recalculateAllIncentives(); // Rebind & calculate on recovery upload
+
+    logAction(user, "Database Restore", "Successfully uploaded and restored database state snapshot files.");
+    addNotification("Database Standard Restore Successful", "The database state files have been replaced and recalculated from backup.", 'success');
+
+    res.json({ success: true, message: "Database state restored successfully." });
+  });
+
+  // --- HTML CLIENT INFRASTRUCTURE ---
+
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    // Serve client Router SPA shell
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`TPHL Sales Incentive running on port ${PORT}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error("Critical server boot error:", err);
+});
