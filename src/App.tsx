@@ -39,9 +39,14 @@ import SettingsView from './components/SettingsView';
 type AppRoute = 'dashboard' | 'projects' | 'teams' | 'executives' | 'rules' | 'sales' | 'incentives' | 'docs' | 'settings';
 
 export default function App() {
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('tphl_token'));
-  const [userProfile, setUserProfile] = useState<any | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authToken, setAuthToken] = useState<string | null>('u-admin');
+  const [userProfile, setUserProfile] = useState<any | null>({
+    id: "u-admin",
+    email: "admin@tphl.com",
+    name: "TPHL Management",
+    role: "Admin"
+  });
+  const [checkingAuth, setCheckingAuth] = useState(false);
 
   // Theme support
   const [isDarkMode, setIsDarkMode] = useState<boolean>(localStorage.getItem('tphl_theme') === 'dark');
@@ -67,36 +72,8 @@ export default function App() {
 
   // Authenticate on startup
   useEffect(() => {
-    let cachedToken = localStorage.getItem('tphl_token');
-    if (!cachedToken) {
-      cachedToken = 'u-admin';
-      localStorage.setItem('tphl_token', 'u-admin');
-    }
-
-    fetch('/api/auth/me', {
-      headers: { 'Authorization': `Bearer ${cachedToken}` }
-    })
-    .then(res => {
-      if (!res.ok) {
-        localStorage.setItem('tphl_token', 'u-admin');
-        return fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer u-admin` }
-        }).then(r2 => {
-          if (!r2.ok) throw new Error();
-          return r2.json();
-        });
-      }
-      return res.json();
-    })
-    .then(data => {
-      setUserProfile(data.user);
-      setAuthToken(localStorage.getItem('tphl_token') || 'u-admin');
-      fetchUnreadNotifications(localStorage.getItem('tphl_token') || 'u-admin');
-      setCheckingAuth(false);
-    })
-    .catch(() => {
-      setCheckingAuth(false);
-    });
+    localStorage.setItem('tphl_token', 'u-admin');
+    fetchUnreadNotifications('u-admin');
   }, []);
 
   const fetchUnreadNotifications = (token: string) => {
