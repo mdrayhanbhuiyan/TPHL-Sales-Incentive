@@ -483,6 +483,116 @@ async function startServer() {
     res.status(201).json(newProject);
   });
 
+  app.post('/api/projects/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can managed projects." });
+      return;
+    }
+
+    const { projects } = req.body;
+    if (!projects || !Array.isArray(projects)) {
+      res.status(400).json({ error: "Invalid data format. Expected an array of projects." });
+      return;
+    }
+
+    const store = getStore();
+    let updatedCount = 0;
+    let createdCount = 0;
+    let skippedCount = 0;
+    const skipped: string[] = [];
+
+    for (const p of projects) {
+      const {
+        project_name,
+        location,
+        unit_measure,
+        floors,
+        units,
+        total_flats,
+        land_share_amount,
+        first_sale_date,
+        status,
+        registration
+      } = p;
+
+      if (!project_name || !location || !unit_measure || !land_share_amount) {
+        skippedCount++;
+        skipped.push(`Row skipped: "${project_name || 'Unnamed'}" is missing required fields (location, unit_measure, or land_share_amount)`);
+        continue;
+      }
+
+      const cleanName = project_name.trim();
+      const existingProjIndex = store.projects.findIndex(proj => proj.project_name.toLowerCase().trim() === cleanName.toLowerCase());
+
+      const data = {
+        project_name: cleanName,
+        location: location.trim(),
+        unit_measure: String(unit_measure),
+        floors: Number(floors || 1),
+        units: Number(units || 0),
+        total_flats: Number(total_flats !== undefined ? total_flats : (units || 0)),
+        land_share_amount: Number(land_share_amount),
+        first_sale_date: first_sale_date || new Date().toISOString().split('T')[0],
+        status: status || 'Active',
+        registration: (registration === 'Yes' || registration === 'No') ? registration : 'Yes'
+      };
+
+      if (existingProjIndex > -1) {
+        // Update existing project
+        store.projects[existingProjIndex] = {
+          ...store.projects[existingProjIndex],
+          ...data
+        };
+        updatedCount++;
+      } else {
+        // Create new project with baseline rules
+        const pid = `proj-${crypto.randomUUID().slice(0, 8)}`;
+        const newProject: Project = {
+          id: pid,
+          ...data as any,
+          created_at: new Date().toISOString()
+        };
+
+        const newRule: IncentiveRule = {
+          id: `rule-${crypto.randomUUID().slice(0, 8)}`,
+          project_id: pid,
+          sale_1_percent: 2.0,
+          sale_2_percent: 2.2,
+          sale_3_percent: 2.5,
+          sale_4_percent: 2.8,
+          sale_5_percent: 3.0,
+          sale_6_percent: 3.2,
+          sale_7_percent: 3.5,
+          first_floor_bonus_percent: 0.5,
+          top_floor_bonus_percent: 0.5,
+          created_at: new Date().toISOString()
+        };
+
+        store.projects.push(newProject);
+        store.incentiveRules.push(newRule);
+        createdCount++;
+      }
+    }
+
+    if (createdCount > 0 || updatedCount > 0) {
+      writeStore(store);
+      // Recalculate remaining incentives since project specs could have matching modifications
+      recalculateAllIncentivesDirect(store);
+    }
+
+    logAction(user, "Bulk Import Projects", `Imported projects directory. Created ${createdCount} and updated ${updatedCount} records.`);
+    addNotification("Projects Imported", `Successfully imported projects (Created: ${createdCount}, Updated: ${updatedCount})`, 'success');
+
+    res.json({
+      success: true,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      skipped
+    });
+  });
+
   app.put('/api/projects/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
     if (user.role !== 'Admin') {
@@ -648,6 +758,86 @@ async function startServer() {
 
     logAction(user, "Edit Team", `Modified Sales Team '${store.salesTeams[tIndex].team_name}'.`);
     res.json(store.salesTeams[tIndex]);
+  });
+
+  app.post('/api/teams/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const { teams } = req.body;
+    if (!teams || !Array.isArray(teams)) {
+      res.status(400).json({ error: "An array of teams is required" });
+      return;
+    }
+
+    const store = getStore();
+    const imported: any[] = [];
+    const skipped: string[] = [];
+
+    for (const teamData of teams) {
+      const { team_name, team_leader, sales_target, assigned_projects } = teamData;
+
+      if (!team_name || !team_leader) {
+        skipped.push(`${team_name || "Unknown"} (Missing required fields)`);
+        continue;
+      }
+
+      const isDupe = store.salesTeams.some(t => t.team_name.toLowerCase().trim() === team_name.toLowerCase().trim()) ||
+                     imported.some(t => t.team_name.toLowerCase().trim() === team_name.toLowerCase().trim());
+      if (isDupe) {
+        skipped.push(`${team_name} (Duplicate team name)`);
+        continue;
+      }
+
+      const tid = `team-${crypto.randomUUID().slice(0, 8)}`;
+      const newTeam: SalesTeam = {
+        id: tid,
+        team_name: team_name.trim(),
+        team_leader: team_leader.trim(),
+        sales_target: Number(sales_target !== undefined ? sales_target : 5)
+      };
+
+      store.salesTeams.push(newTeam);
+
+      if (assigned_projects && typeof assigned_projects === 'string') {
+        const projectNames = assigned_projects.split(/[;,]/).map(p => p.trim()).filter(Boolean);
+        projectNames.forEach(pName => {
+          const matchedProj = store.projects.find(p => p.project_name.toLowerCase().trim() === pName.toLowerCase().trim());
+          if (matchedProj) {
+            store.teamProjects.push({
+              id: `tp-${crypto.randomUUID().slice(0, 8)}`,
+              team_id: tid,
+              project_id: matchedProj.id
+            });
+          }
+        });
+      }
+
+      imported.push({
+        ...newTeam,
+        assigned_projects: store.teamProjects
+          .filter(tp => tp.team_id === tid)
+          .map(tp => store.projects.find(p => p.id === tp.project_id))
+          .filter(Boolean)
+      });
+    }
+
+    writeStore(store);
+
+    if (imported.length > 0) {
+      logAction(user, "Add Teams Bulk", `Imported ${imported.length} Sales Teams/Divisions via CSV.`);
+    }
+
+    res.status(200).json({
+      success: true,
+      importedCount: imported.length,
+      skippedCount: skipped.length,
+      skipped,
+      imported
+    });
   });
 
   app.delete('/api/teams/:id', authenticateToken, (req, res) => {
@@ -978,6 +1168,107 @@ async function startServer() {
 
     logAction(user, "Update Global Bonus Setup", `Modified target bonuses: 90% achieved -> ${store.bonusRules.target_90_bonus}, 100% achieved -> ${store.bonusRules.target_100_bonus}.`);
     res.json({ success: true, bonusRules: store.bonusRules });
+  });
+
+  app.post('/api/rules/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const { projectRules, bonusRules } = req.body;
+    const store = getStore();
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const skipped: string[] = [];
+
+    // Update global bonus rules if provided
+    if (bonusRules) {
+      if (bonusRules.target_90_bonus !== undefined) {
+        store.bonusRules.target_90_bonus = Number(bonusRules.target_90_bonus);
+      }
+      if (bonusRules.target_100_bonus !== undefined) {
+        store.bonusRules.target_100_bonus = Number(bonusRules.target_100_bonus);
+      }
+      if (bonusRules.team_target_bonus !== undefined) {
+        store.bonusRules.team_target_bonus = Number(bonusRules.team_target_bonus);
+      }
+    }
+
+    // Update project rules
+    if (projectRules && Array.isArray(projectRules)) {
+      for (const pr of projectRules) {
+        const {
+          project_name,
+          sale_1_percent,
+          sale_2_percent,
+          sale_3_percent,
+          sale_4_percent,
+          sale_5_percent,
+          sale_6_percent,
+          sale_7_percent,
+          first_floor_bonus_percent,
+          top_floor_bonus_percent
+        } = pr;
+
+        if (!project_name) {
+          skippedCount++;
+          skipped.push("Row skipped: Missing project name");
+          continue;
+        }
+
+        const project = store.projects.find(p => p.project_name.toLowerCase().trim() === project_name.toLowerCase().trim());
+        if (!project) {
+          skippedCount++;
+          skipped.push(`Row skipped: Project named "${project_name}" not found in current project list.`);
+          continue;
+        }
+
+        const projectId = project.id;
+        let rIndex = store.incentiveRules.findIndex(r => r.project_id === projectId);
+
+        const data = {
+          sale_1_percent: Number(sale_1_percent !== undefined ? sale_1_percent : 1.5),
+          sale_2_percent: Number(sale_2_percent !== undefined ? sale_2_percent : 1.8),
+          sale_3_percent: Number(sale_3_percent !== undefined ? sale_3_percent : 2.0),
+          sale_4_percent: Number(sale_4_percent !== undefined ? sale_4_percent : 2.2),
+          sale_5_percent: Number(sale_5_percent !== undefined ? sale_5_percent : 2.5),
+          sale_6_percent: Number(sale_6_percent !== undefined ? sale_6_percent : 2.8),
+          sale_7_percent: Number(sale_7_percent !== undefined ? sale_7_percent : 3.0),
+          first_floor_bonus_percent: Number(first_floor_bonus_percent !== undefined ? first_floor_bonus_percent : 0.5),
+          top_floor_bonus_percent: Number(top_floor_bonus_percent !== undefined ? top_floor_bonus_percent : 0.5),
+        };
+
+        if (rIndex === -1) {
+          store.incentiveRules.push({
+            id: `rule-${crypto.randomUUID().slice(0, 8)}`,
+            project_id: projectId,
+            ...data,
+            created_at: new Date().toISOString()
+          });
+        } else {
+          store.incentiveRules[rIndex] = {
+            ...store.incentiveRules[rIndex],
+            ...data
+          };
+        }
+        updatedCount++;
+      }
+    }
+
+    writeStore(store);
+    recalculateAllIncentives();
+
+    logAction(user, "Bulk Import Rules", `Imported rules via CSV. ${updatedCount} project rules updated, global target bonuses updated.`);
+
+    res.json({
+      success: true,
+      updatedCount,
+      skippedCount,
+      skipped
+    });
   });
 
   // --- SALES ENTRY MODULE API ---

@@ -15,7 +15,10 @@ import {
   Briefcase,
   X,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Download,
+  Check
 } from 'lucide-react';
 import { SalesTeam, Project } from '../types';
 
@@ -43,6 +46,13 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // CSV States
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const fetchTeamsAndProjects = async () => {
     setLoading(true);
@@ -195,6 +205,198 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
     }
   };
 
+  // CSV format download and upload logic
+  const handleDownloadDummyCSV = () => {
+    const headers = "team_name,team_leader,sales_target,assigned_projects\n";
+    const sampleProj1 = projectsList[0]?.project_name || "Green Orchid";
+    const sampleProj2 = projectsList[1]?.project_name || "Sky Villa";
+    
+    const row1 = `Dhaka Central Vanguard,Sajjad Hossain,10,${sampleProj1}; ${sampleProj2}\n`;
+    const row2 = `Sylhet Pioneers,Tamim Iqbal,5,${sampleProj1}\n`;
+    const row3 = `Chittagong Coastal Kings,Jamil Ahmed,8,`;
+    
+    const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(headers + row1 + row2 + row3);
+    const link = document.createElement("a");
+    link.setAttribute("href", csvContent);
+    link.setAttribute("download", "tphl_teams_divisions_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFile(file);
+    readCsvData(file);
+  };
+
+  const handleCsvDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleCsvDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.name.endsWith('.csv')) {
+      setCsvFile(file);
+      readCsvData(file);
+    } else {
+      setCsvError("Only standard .csv files are supported.");
+    }
+  };
+
+  const readCsvData = (file: File) => {
+    setCsvError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) {
+          setCsvError("Uploaded file is empty.");
+          return;
+        }
+        
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) {
+          setCsvError("CSV file must contain a header row and at least one data row.");
+          return;
+        }
+
+        // Clean headers
+        const headers = lines[0].split(',').map(header => header.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        
+        const requiredHeaders = ['team_name', 'team_leader'];
+        const missing = requiredHeaders.filter(h => !headers.includes(h));
+        if (missing.length > 0) {
+          setCsvError(`CSV missing required column headers: ${missing.join(', ')}`);
+          return;
+        }
+
+        const items: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Simple CSV line parser split by comma but with quote safety
+          const values: string[] = [];
+          let currentVal = '';
+          let inQuotes = false;
+          for (let charIndex = 0; charIndex < line.length; charIndex++) {
+            const char = line[charIndex];
+            if (char === '"' || char === "'") {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+              currentVal = '';
+            } else {
+              currentVal += char;
+            }
+          }
+          values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+
+          const item: any = {};
+          headers.forEach((h, index) => {
+            item[h] = values[index] !== undefined ? values[index] : '';
+          });
+
+          // Validations
+          const teamNameVal = item.team_name?.trim();
+          const teamLeaderVal = item.team_leader?.trim();
+          
+          if (!teamNameVal || !teamLeaderVal) {
+            item._invalid = true;
+            item._reason = "Team Name and Team Leader are required and cannot be blank.";
+          } else {
+            // Check duplicates in uploaded batch
+            if (items.some(it => it.team_name?.toLowerCase().trim() === teamNameVal.toLowerCase().trim())) {
+              item._invalid = true;
+              item._reason = "Duplicate Team Name within this file.";
+            } else {
+              // Check duplicate in store list
+              const existingDupe = teams.some(t => t.team_name.toLowerCase().trim() === teamNameVal.toLowerCase().trim());
+              if (existingDupe) {
+                item._invalid = true;
+                item._reason = "Team Name already exists in system.";
+              }
+            }
+          }
+
+          item.team_name = teamNameVal || '';
+          item.team_leader = teamLeaderVal || '';
+          item.sales_target = item.sales_target ? Number(item.sales_target) : 5;
+          item.assigned_projects = item.assigned_projects?.trim() || '';
+
+          // Resolve projects to show in preview
+          const projNames = item.assigned_projects.split(/[;,]/).map((p: string) => p.trim()).filter(Boolean);
+          item._resolvedProjects = projNames.map((pName: string) => {
+            const pj = projectsList.find(p => p.project_name.toLowerCase().trim() === pName.toLowerCase().trim());
+            return {
+              name: pName,
+              found: !!pj
+            };
+          });
+
+          items.push(item);
+        }
+
+        if (items.length === 0) {
+          setCsvError("No valid rows parsed from the CSV file.");
+        } else {
+          setParsedData(items);
+        }
+      } catch (err) {
+        setCsvError("Error parsing the CSV file.");
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const submitCsvImport = async () => {
+    const validRows = parsedData.filter(d => !d._invalid);
+    if (validRows.length === 0) {
+      setCsvError("There are no valid entries to import.");
+      return;
+    }
+
+    setImporting(true);
+    setCsvError(null);
+    try {
+      const res = await fetch('/api/teams/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ teams: validRows })
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "CSV bulk team registration failed.");
+
+      setSuccess(`Success! Organized ${result.importedCount} new teams/divisions via CSV. ${result.skippedCount} rows skipped.`);
+      setIsCsvModalOpen(false);
+      setCsvFile(null);
+      setParsedData([]);
+      fetchTeamsAndProjects();
+    } catch (err: any) {
+      setCsvError(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const openCsvModal = () => {
+    setCsvFile(null);
+    setParsedData([]);
+    setCsvError(null);
+    setImporting(false);
+    setError(null);
+    setSuccess(null);
+    setIsCsvModalOpen(true);
+  };
+
   const filteredTeams = teams.filter(t => 
     t.team_name.toLowerCase().includes(search.toLowerCase()) ||
     t.team_leader.toLowerCase().includes(search.toLowerCase())
@@ -209,12 +411,21 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
           <p className="mt-1 text-sm text-gray-500">Coordinate regional project distribution networks and target quotas for team divisions.</p>
         </div>
         {userRole === 'Admin' && (
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95 self-start sm:self-auto"
-          >
-            <Plus className="w-4.5 h-4.5" /> Organize Team
-          </button>
+          <div className="flex flex-wrap gap-2.5 self-start sm:self-auto">
+            <button
+              onClick={openCsvModal}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl border border-gray-200 shadow-sm cursor-pointer transition active:scale-95"
+              title="Upload Sales Teams directory in batch using CSV"
+            >
+              <Upload className="w-4 h-4 text-indigo-500 font-bold" /> Import via CSV
+            </button>
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95"
+            >
+              <Plus className="w-4.5 h-4.5" /> Organize Team
+            </button>
+          </div>
         )}
       </div>
 
@@ -457,6 +668,189 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
                 className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-md transition"
               >
                 Yes, Dissolve
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSV IMPORT MODAL */}
+      {isCsvModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6 max-h-[92vh] flex flex-col justify-between text-gray-850 dark:text-slate-100">
+            <div className="flex items-start justify-between border-b border-gray-100 dark:border-slate-800 pb-4 shrink-0">
+              <div className="space-y-1">
+                <h2 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-indigo-500" /> Bulk Import Sales Teams &amp; Divisions
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Quickly assemble and coordinate multiple sales divisions by dragging or browsing a CSV template file.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsCsvModalOpen(false)}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl text-gray-400 dark:text-slate-500 transition hover:text-gray-900 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-5 py-1">
+              {/* Reference instructions / Download Template banner */}
+              <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/60 dark:border-indigo-950/55 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-indigo-950 dark:text-indigo-350">Download Reference CSV Format</h4>
+                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-400/80 leading-relaxed">
+                    Make sure your CSV contains columns for <strong>team_name</strong>, <strong>team_leader</strong>, <strong>sales_target</strong>, and <strong>assigned_projects</strong>.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadDummyCSV}
+                  className="flex items-center gap-1.5 px-3.5 py-2 hover:bg-indigo-600 bg-indigo-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shrink-0 self-start sm:self-auto shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" /> Get Demo CSV Form
+                </button>
+              </div>
+
+              {/* Upload field drag/drop container */}
+              <div 
+                onDragOver={handleCsvDragOver}
+                onDrop={handleCsvDrop}
+                onClick={() => document.getElementById('team-csv-picker')?.click()}
+                className={`border-2 border-dashed rounded-3xl p-6 text-center cursor-pointer transition duration-150 ${
+                  csvFile 
+                    ? 'border-indigo-400 bg-indigo-50/10 dark:bg-slate-800/20' 
+                    : 'border-gray-200 dark:border-slate-800 hover:border-indigo-500 hover:bg-gray-50/50 dark:hover:bg-slate-800/20'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  id="team-csv-picker"
+                  accept=".csv"
+                  onChange={handleCsvFileChange}
+                  className="hidden" 
+                />
+                
+                <div className="space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-slate-800 flex items-center justify-center text-indigo-500 mx-auto border border-indigo-100/40 dark:border-indigo-900/40">
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  {csvFile ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">File selected: <span className="font-mono text-indigo-600 dark:text-indigo-400">{csvFile.name}</span></p>
+                      <p className="text-[10px] text-gray-400 font-mono">{(csvFile.size / 1024).toFixed(1)} KB • Click or drop to replace</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-gray-800 dark:text-slate-200">Drag &amp; drop your CSV file here, or <span className="text-indigo-600 dark:text-indigo-400 underline">browse</span></p>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500">Only standard encoded comma-separated .csv values are parsed</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Parsing Alert & Messages */}
+              {csvError && (
+                <div className="flex items-start gap-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-150 dark:border-rose-900/40 p-3.5 rounded-2xl text-[11px] font-medium text-rose-800 dark:text-rose-455">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="leading-normal">{csvError}</span>
+                </div>
+              )}
+
+              {/* CSV Rows Live Preview Table */}
+              {parsedData.length > 0 && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider">
+                    <span>Parsed CSV Row Preview ({parsedData.length} records detected)</span>
+                    <span className="text-indigo-600 dark:text-indigo-405">{parsedData.filter(d => !d._invalid).length} valid • {parsedData.filter(d => d._invalid).length} skipped</span>
+                  </div>
+
+                  <div className="border border-gray-100 dark:border-slate-800/80 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-gray-50/70 dark:bg-slate-800/30 sticky top-0 border-b border-gray-100 dark:border-slate-800 text-[10px] text-gray-400 dark:text-slate-500 uppercase font-mono">
+                        <tr>
+                          <th className="px-4 py-2.5">Row</th>
+                          <th className="px-4 py-2.5">Team Division Name</th>
+                          <th className="px-4 py-2.5">Team Leader</th>
+                          <th className="px-4 py-2.5">Monthly Target</th>
+                          <th className="px-4 py-2.5">Assigned projects binding</th>
+                          <th className="px-4 py-2.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-slate-800/40 dark:bg-slate-900/25">
+                        {parsedData.map((row, idx) => (
+                          <tr key={idx} className={row._invalid ? 'bg-rose-50/10 dark:bg-rose-950/5 opacity-85' : 'hover:bg-gray-50/20'}>
+                            <td className="px-4 py-3 font-mono font-bold text-gray-400 text-[11px]">{idx + 1}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-950 dark:text-white">{row.team_name || <span className="italic text-gray-300">none</span>}</td>
+                            <td className="px-4 py-3 font-medium text-gray-700 dark:text-slate-300">{row.team_leader || <span className="italic text-gray-300">none</span>}</td>
+                            <td className="px-4 py-3 font-mono">{row.sales_target} Flat(s)</td>
+                            <td className="px-4 py-3 font-sans">
+                              {row._resolvedProjects && row._resolvedProjects.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {row._resolvedProjects.map((proj: any, pIdx: number) => (
+                                    <span 
+                                      key={pIdx} 
+                                      className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
+                                        proj.found 
+                                          ? 'bg-emerald-500/10 text-emerald-800 border border-emerald-500/20' 
+                                          : 'bg-amber-500/10 text-amber-800 border border-amber-500/20'
+                                      }`}
+                                      title={proj.found ? "Matching project property found" : "Project does not exist; alignment will be skipped"}
+                                    >
+                                      {proj.name} {proj.found ? "✓" : "⚠️"}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-gray-400 italic">None</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {row._invalid ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-450 px-2 py-0.5 rounded-full font-semibold max-w-[140px] truncate" title={row._reason}>
+                                  ⚠️ {row._reason}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider font-mono">
+                                  <Check className="w-2.5 h-2.5" /> Validated
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-100 dark:border-slate-800 pt-4 flex gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsCsvModalOpen(false)}
+                className="flex-1 bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-100 text-xs font-bold py-3 rounded-xl transition cursor-pointer text-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitCsvImport}
+                disabled={importing || parsedData.filter(d => !d._invalid).length === 0}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 dark:disabled:bg-slate-805 text-white disabled:text-gray-400 dark:disabled:text-slate-500 text-xs font-bold py-3 rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {importing ? (
+                  <>
+                    <div className="w-3.5 h-3.5 rounded-full border border-current border-t-transparent animate-spin" />
+                    <span>Adding Teams...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4.5 h-4.5" />
+                    <span>Import {parsedData.filter(d => !d._invalid).length} validated teams</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
