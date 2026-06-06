@@ -658,6 +658,272 @@ async function startServer() {
     res.json({ message: "Project deleted successfully" });
   });
 
+  // --- PROJECTS ON SALE API ---
+  app.get('/api/projects-on-sale', authenticateToken, (req, res) => {
+    const store = getStore();
+    res.json(store.projectsOnSale || []);
+  });
+
+  app.post('/api/projects-on-sale/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can manage projects on sale." });
+      return;
+    }
+
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "Missing or invalid items array for bulk import." });
+      return;
+    }
+
+    const store = getStore();
+    if (!store.projectsOnSale) store.projectsOnSale = [];
+    if (!store.unitRegistrations) store.unitRegistrations = [];
+
+    const importedProjects = [];
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+
+    for (const item of items) {
+      const { project_name, flat_unit_size, project_id, floor_number, units_per_floor } = item;
+      if (!project_name) continue;
+
+      // Try matching by project directory name or exact id
+      let resolvedProjectId = project_id;
+      const matchedProj = store.projects.find(p => 
+        p.id === project_id || 
+        String(p.id).toLowerCase() === String(project_id).toLowerCase().trim() ||
+        p.project_name.toLowerCase() === String(project_id).toLowerCase().trim()
+      );
+
+      if (matchedProj) {
+        resolvedProjectId = matchedProj.id;
+      } else {
+        // default fallback if none matches
+        if (store.projects && store.projects.length > 0) {
+          resolvedProjectId = store.projects[0].id;
+        } else {
+          resolvedProjectId = `proj-${crypto.randomUUID().slice(0, 8)}`;
+        }
+      }
+
+      const fNum = Number(floor_number) || 1;
+      const uPerFloor = Number(units_per_floor) || 1;
+      const total_units = fNum * uPerFloor;
+      const pid = `pos-${crypto.randomUUID().slice(0, 8)}`;
+
+      const newProject = {
+        id: pid,
+        project_name: String(project_name).trim(),
+        flat_unit_size: String(flat_unit_size || "1200 SFT").trim(),
+        project_id: resolvedProjectId,
+        floor_number: fNum,
+        units_per_floor: uPerFloor,
+        total_units,
+        created_at: new Date().toISOString()
+      };
+
+      store.projectsOnSale.push(newProject);
+      importedProjects.push(newProject);
+
+      // Dynamically spin up unit registrations
+      for (let f = 1; f <= fNum; f++) {
+        for (let u = 0; u < uPerFloor; u++) {
+          const letter = letters[u] || String.fromCharCode(65 + u);
+          store.unitRegistrations.push({
+            id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+            project_on_sale_id: pid,
+            unit_name: `${f}${letter}`,
+            registered: 'No',
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+    }
+
+    writeStore(store);
+    logAction(user, "Bulk Upload Pre-sales Campaigns", `Succeeded in bulk importing ${importedProjects.length} pre-sale campaign configurations from CSV file.`);
+    res.status(201).json({ count: importedProjects.length, items: importedProjects });
+  });
+
+  app.post('/api/projects-on-sale', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can manage projects on sale." });
+      return;
+    }
+
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor } = req.body;
+    if (!project_name || !flat_unit_size || !project_id || !floor_number || !units_per_floor) {
+      res.status(400).json({ error: "Missing required fields for project on sale." });
+      return;
+    }
+
+    const store = getStore();
+    const pid = `pos-${crypto.randomUUID().slice(0, 8)}`;
+    const total_units = Number(floor_number) * Number(units_per_floor);
+
+    const newProject = {
+      id: pid,
+      project_name,
+      flat_unit_size,
+      project_id,
+      floor_number: Number(floor_number),
+      units_per_floor: Number(units_per_floor),
+      total_units,
+      created_at: new Date().toISOString()
+    };
+
+    if (!store.projectsOnSale) store.projectsOnSale = [];
+    store.projectsOnSale.push(newProject);
+
+    // Automatically initialize unit registrations to "No" by default for all the units
+    if (!store.unitRegistrations) store.unitRegistrations = [];
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    for (let f = 1; f <= Number(floor_number); f++) {
+      for (let u = 0; u < Number(units_per_floor); u++) {
+        const letter = letters[u] || String.fromCharCode(65 + u);
+        store.unitRegistrations.push({
+          id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+          project_on_sale_id: pid,
+          unit_name: `${f}${letter}`,
+          registered: 'No',
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+
+    writeStore(store);
+    logAction(user, "Add Project On Sale", `Added pre-sale project '${project_name}' (ID: ${pid}) and generated ${total_units} units.`);
+    res.status(201).json(newProject);
+  });
+
+  app.put('/api/projects-on-sale/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can edit projects on sale." });
+      return;
+    }
+
+    const store = getStore();
+    if (!store.projectsOnSale) store.projectsOnSale = [];
+    const pIndex = store.projectsOnSale.findIndex(p => p.id === req.params.id);
+    if (pIndex === -1) {
+      res.status(404).json({ error: "Project on sale not found." });
+      return;
+    }
+
+    const current = store.projectsOnSale[pIndex];
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor } = req.body;
+
+    const floorNum = floor_number !== undefined ? Number(floor_number) : current.floor_number;
+    const unitsPerFloor = units_per_floor !== undefined ? Number(units_per_floor) : current.units_per_floor;
+    const total_units = floorNum * unitsPerFloor;
+
+    const updated = {
+      ...current,
+      project_name: project_name || current.project_name,
+      flat_unit_size: flat_unit_size || current.flat_unit_size,
+      project_id: project_id || current.project_id,
+      floor_number: floorNum,
+      units_per_floor: unitsPerFloor,
+      total_units
+    };
+
+    store.projectsOnSale[pIndex] = updated;
+
+    // Regenerate/refresh list of unit registrations safely if floor_number or units_per_floor changed!
+    if (floorNum !== current.floor_number || unitsPerFloor !== current.units_per_floor) {
+      // Find existing unit registrations for this pre-sale project
+      const existingRegs = (store.unitRegistrations || []).filter(r => r.project_on_sale_id === req.params.id);
+      const existingMap = new Map(existingRegs.map(r => [r.unit_name, r]));
+
+      // Clear existing for this project
+      store.unitRegistrations = (store.unitRegistrations || []).filter(r => r.project_on_sale_id !== req.params.id);
+
+      // Re-add matching units to preserve existing "Yes" registrations and create "No" for new units
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+      for (let f = 1; f <= floorNum; f++) {
+        for (let u = 0; u < unitsPerFloor; u++) {
+          const letter = letters[u] || String.fromCharCode(65 + u);
+          const uName = `${f}${letter}`;
+          const existing = existingMap.get(uName);
+          if (existing) {
+            store.unitRegistrations.push(existing);
+          } else {
+            store.unitRegistrations.push({
+              id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+              project_on_sale_id: req.params.id,
+              unit_name: uName,
+              registered: 'No',
+              created_at: new Date().toISOString()
+            });
+          }
+        }
+      }
+    }
+
+    writeStore(store);
+    logAction(user, "Edit Project On Sale", `Updated pre-sale project details for '${updated.project_name}'.`);
+    res.json(updated);
+  });
+
+  app.delete('/api/projects-on-sale/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can delete projects on sale." });
+      return;
+    }
+
+    const store = getStore();
+    const project = (store.projectsOnSale || []).find(p => p.id === req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "Project on sale not found." });
+      return;
+    }
+
+    // Filter out of arrays
+    store.projectsOnSale = (store.projectsOnSale || []).filter(p => p.id !== req.params.id);
+    store.unitRegistrations = (store.unitRegistrations || []).filter(r => r.project_on_sale_id !== req.params.id);
+
+    writeStore(store);
+    logAction(user, "Delete Project On Sale", `Deleted pre-sale project '${project.project_name}' and clean unit registrations.`);
+    res.json({ message: "Deleted successfully" });
+  });
+
+  // --- UNIT REGISTRATIONS API ---
+  app.get('/api/unit-registrations', authenticateToken, (req, res) => {
+    const store = getStore();
+    res.json(store.unitRegistrations || []);
+  });
+
+  app.put('/api/unit-registrations/:id', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    const { registered, registration_date } = req.body;
+
+    const store = getStore();
+    if (!store.unitRegistrations) store.unitRegistrations = [];
+    const rIndex = store.unitRegistrations.findIndex(r => r.id === req.params.id);
+    if (rIndex === -1) {
+      res.status(404).json({ error: "Unit registration record not found." });
+      return;
+    }
+
+    const current = store.unitRegistrations[rIndex];
+    store.unitRegistrations[rIndex] = {
+      ...current,
+      registered: registered || 'No',
+      registration_date: registration_date || undefined
+    };
+
+    // Recalculate remaining incentives since a unit registration is processed or revoked
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    logAction(user, "Update Unit Registration", `Updated Unit '${current.unit_name}' registration to: ${registered} (${registration_date || 'No Date'}).`);
+    res.json(store.unitRegistrations[rIndex]);
+  });
+
   // --- SALES TEAM MANAGEMENT API ---
   app.get('/api/teams', authenticateToken, (req, res) => {
     const store = getStore();
@@ -727,14 +993,15 @@ async function startServer() {
       return;
     }
 
-    const { team_name, team_leader, sales_target, assigned_project_ids } = req.body;
+    const { team_name, team_leader, sales_target, assigned_project_ids, monthly_targets } = req.body;
     
     // Update team
     store.salesTeams[tIndex] = {
       ...store.salesTeams[tIndex],
       team_name: team_name || store.salesTeams[tIndex].team_name,
       team_leader: team_leader || store.salesTeams[tIndex].team_leader,
-      sales_target: Number(sales_target !== undefined ? sales_target : store.salesTeams[tIndex].sales_target)
+      sales_target: Number(sales_target !== undefined ? sales_target : store.salesTeams[tIndex].sales_target),
+      monthly_targets: monthly_targets !== undefined ? monthly_targets : store.salesTeams[tIndex].monthly_targets
     };
 
     // Update team projects
@@ -1312,7 +1579,7 @@ async function startServer() {
     const user = (req as any).user;
     
     // Sales Executive or Admin can enter sales
-    const { project_id, unit_name, unit_measure, floor_number, sale_date, executive_id } = req.body;
+    const { project_id, unit_name, unit_measure, floor_number, sale_date, executive_id, project_on_sale_id } = req.body;
     if (!project_id || !unit_name || !unit_measure || !floor_number || !sale_date || !executive_id) {
       res.status(400).json({ error: "Missing required sales fields." });
       return;
@@ -1343,7 +1610,8 @@ async function startServer() {
       floor_number: Number(floor_number),
       sale_number: 1, // Will be computed chronologically in recalculation
       sale_date,
-      executive_id
+      executive_id,
+      project_on_sale_id
     };
 
     store.sales.push(newSale);

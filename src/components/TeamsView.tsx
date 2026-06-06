@@ -41,8 +41,11 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
   // Form
   const [name, setName] = useState('');
   const [leader, setLeader] = useState('');
-  const [target, setTarget] = useState(3000000);
+  const [target, setTarget] = useState(5);
   const [assignedProjectIds, setAssignedProjectIds] = useState<string[]>([]);
+  const [monthlyTargets, setMonthlyTargets] = useState<{ [key: string]: number }>({});
+  const [targetMonth, setTargetMonth] = useState('2026-06');
+  const [targetUnits, setTargetUnits] = useState(5);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -100,7 +103,8 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
           team_name: name,
           team_leader: leader,
           sales_target: target,
-          assigned_project_ids: assignedProjectIds
+          assigned_project_ids: assignedProjectIds,
+          monthly_targets: monthlyTargets
         })
       });
 
@@ -131,7 +135,8 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
           team_name: name,
           team_leader: leader,
           sales_target: target,
-          assigned_project_ids: assignedProjectIds
+          assigned_project_ids: assignedProjectIds,
+          monthly_targets: monthlyTargets
         })
       });
 
@@ -181,6 +186,7 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
     setLeader('');
     setTarget(5);
     setAssignedProjectIds([]);
+    setMonthlyTargets({});
     setError(null);
     setSuccess(null);
     setIsAddOpen(true);
@@ -190,8 +196,9 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
     setSelectedTeam(team);
     setName(team.team_name);
     setLeader(team.team_leader);
-    setTarget(team.sales_target);
-    setAssignedProjectIds(team.assigned_projects.map((p: any) => p.id));
+    setTarget(team.sales_target || 5);
+    setAssignedProjectIds((team.assigned_projects || []).map((p: any) => p.id));
+    setMonthlyTargets(team.monthly_targets || {});
     setError(null);
     setSuccess(null);
     setIsEditOpen(true);
@@ -578,7 +585,7 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700">Consolidated Monthly Target (Number of units/flats)</label>
+                <label className="text-xs font-semibold text-gray-700">Consolidated Base Monthly Target (Number of units/flats)</label>
                 <input
                   type="number"
                   required
@@ -587,6 +594,72 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
                   onChange={(e) => setTarget(Number(e.target.value))}
                   className="w-full text-xs bg-gray-50 rounded-lg px-3.5 py-2.5 border border-gray-100 focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              {/* Monthly target override subform lists */}
+              <div className="space-y-2 border-t border-gray-100 pt-3">
+                <label className="text-xs font-bold text-gray-500 uppercase">Month-wise Target Configuration (Optional)</label>
+                
+                {/* Addition controls */}
+                <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                  <input
+                    type="month"
+                    value={targetMonth}
+                    onChange={(e) => setTargetMonth(e.target.value)}
+                    className="col-span-1 text-xs bg-white border border-gray-200 rounded-lg p-1 px-2 focus:outline-none"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Units target"
+                    value={targetUnits}
+                    onChange={(e) => setTargetUnits(Number(e.target.value))}
+                    className="col-span-1 text-xs bg-white border border-gray-200 rounded-lg p-1 px-2 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!targetMonth) return;
+                      setMonthlyTargets(prev => ({
+                        ...prev,
+                        [targetMonth]: Number(targetUnits || 1)
+                      }));
+                    }}
+                    className="col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold py-1 px-2 rounded-lg transition"
+                  >
+                    Add Override
+                  </button>
+                </div>
+
+                {/* Displaying listing */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {Object.keys(monthlyTargets).length === 0 ? (
+                    <span className="text-[10px] text-gray-400 italic">No custom monthly overrides registered. Falling back to the base target.</span>
+                  ) : (
+                    Object.entries(monthlyTargets).map(([mKey, uVal]) => (
+                      <span
+                        key={mKey}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg text-[10px] font-bold"
+                      >
+                        📅 {mKey}: <strong>{uVal} Units</strong>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMonthlyTargets(prev => {
+                              const next = { ...prev };
+                              delete next[mKey];
+                              return next;
+                            });
+                          }}
+                          className="text-rose-500 hover:text-rose-700 font-extrabold"
+                          title="delete override"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
               </div>
 
               {/* Multi Select Grid Checklist - highly intuitive for assigned project bindings! */}

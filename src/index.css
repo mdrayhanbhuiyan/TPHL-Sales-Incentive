@@ -71,3 +71,49 @@ html, body {
   font-size: 0.7rem;
   font-weight: 600;
 }
+
+/* Premium Print Media Formatting Styles Rules */
+@media print {
+  /* Hide the entire viewport contents globally */
+  body, html, #root, #root * {
+    visibility: hidden;
+    background-color: white !important;
+  }
+  
+  /* Select and make ONLY the compiled print sheet content container visible */
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  
+  /* Position the print target cleanly perfectly aligned to document margins */
+  #print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Force print background colors to maintain visual styling dividers */
+  thead tr {
+    background-color: #F1F5F9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  tfoot tr {
+    background-color: #F8FAFC !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide print buttons, search, and other interactive tabs on actual sheet */
+  button, input, select {
+    display: none !important;
+  }
+}

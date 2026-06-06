@@ -25,6 +25,7 @@ interface IncentivesProps {
 
 export default function IncentivesView({ authToken, userRole }: IncentivesProps) {
   const [incentives, setIncentives] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -36,24 +37,30 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
   const [activeReport, setActiveReport] = useState<string>('mon-inc'); 
   // 'mon-sales' | 'mon-inc' | 'exec-perf' | 'team-perf' | 'proj-sales' | 'proj-inc' | 'top-seller' | 'top-earner'
 
-  const fetchIncentives = () => {
+  const fetchIncentivesAndTeams = async () => {
     setLoading(true);
-    fetch('/api/incentives', {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    })
-    .then(r => r.json())
-    .then(data => {
-      setIncentives(data);
+    try {
+      const incRes = await fetch('/api/incentives', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const data = await incRes.json();
+      setIncentives(Array.isArray(data) ? data : []);
+
+      // Also get team directory with targets & leaders
+      const teamRes = await fetch('/api/teams', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const teamData = await teamRes.json();
+      setTeams(Array.isArray(teamData) ? teamData : []);
+    } catch (err) {
+      console.error("Error loaded report states:", err);
+    } finally {
       setLoading(false);
-    })
-    .catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
+    }
   };
 
   useEffect(() => {
-    fetchIncentives();
+    fetchIncentivesAndTeams();
   }, [authToken]);
 
   // List unique values for filters
@@ -159,29 +166,84 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
 
       case 'team-perf':
         // Team Performance Report
-        const teamMap: Record<string, any> = {};
-        list.forEach(item => {
-          const key = item.team_name;
-          if (!teamMap[key]) {
-            teamMap[key] = { team: item.team_name, count: 0, volume: 0, totalInc: 0 };
-          }
-          teamMap[key].count += 1;
-          teamMap[key].volume += Number(item.land_share_amount);
-          teamMap[key].totalInc += Number(item.total_incentive);
+        // Align data dynamically with the real salesTeams list from the backend
+        const directoryTeams = Array.isArray(teams) ? teams : [];
+        const teamPerfMap: Record<string, any> = {};
+
+        // 1. Seed report map with active registered teams to ensure 0-sale teams are also listed!
+        directoryTeams.forEach(t => {
+          teamPerfMap[t.team_name] = {
+            team_name: t.team_name,
+            team_leader: t.team_leader || 'N/A',
+            sales_target: Number(t.sales_target || 0),
+            count: 0,
+            volume: 0,
+            totalInc: 0
+          };
         });
-        const teamRows = Object.values(teamMap);
+
+        // 2. Accumulate individual sales entries under respective teams (handles unassigned individuals as well)
+        list.forEach(item => {
+          const name = item.team_name || 'Unassigned / Independent';
+          if (!teamPerfMap[name]) {
+            teamPerfMap[name] = {
+              team_name: name,
+              team_leader: 'Independent Officers',
+              sales_target: 0,
+              count: 0,
+              volume: 0,
+              totalInc: 0
+            };
+          }
+          teamPerfMap[name].count += 1;
+          teamPerfMap[name].volume += Number(item.land_share_amount || 0);
+          teamPerfMap[name].totalInc += Number(item.total_incentive || 0);
+        });
+
+        const teamPerfRows = Object.values(teamPerfMap);
+
+        // 3. Map into complete audit rows
+        const calculatedRows = teamPerfRows.map(t => {
+          const compPercent = t.sales_target > 0 ? Math.round((t.count / t.sales_target) * 100) : 0;
+          let verdict = "N/A - Off Cycle";
+          if (t.sales_target > 0) {
+            verdict = compPercent >= 100 ? "🎯 Fully Achieved" : compPercent >= 75 ? "📈 On Target Track" : "⚠️ Under Performing";
+          }
+          return [
+            t.team_name,
+            t.team_leader,
+            t.sales_target > 0 ? `${t.sales_target} Units` : '-',
+            `${t.count} Units`,
+            t.sales_target > 0 ? `${compPercent}%` : '-',
+            Number(t.volume).toLocaleString(),
+            Number(t.totalInc).toLocaleString(),
+            verdict
+          ];
+        });
+
+        // 4. Over-all calculations
+        const tTargets = teamPerfRows.reduce((s, t) => s + t.sales_target, 0);
+        const tAchieved = teamPerfRows.reduce((s, t) => s + t.count, 0);
+        const overallCompPercent = tTargets > 0 ? Math.round((tAchieved / tTargets) * 100) : 0;
+        const totalVolume = teamPerfRows.reduce((s, t) => s + t.volume, 0);
+        const totalPayouts = teamPerfRows.reduce((s, t) => s + t.totalInc, 0);
+
+        const cumulativeSums = [
+          "Sum Totals (" + teamPerfRows.length + " Divisions):",
+          "",
+          tTargets > 0 ? `${tTargets} Units` : "-",
+          `${tAchieved} Units`,
+          tTargets > 0 ? `${overallCompPercent}%` : "-",
+          totalVolume.toLocaleString(),
+          totalPayouts.toLocaleString() + " BDT",
+          tTargets > 0 ? (overallCompPercent >= 100 ? "🎯 Target Exceeded" : "⚠️ Needs Improvement") : "N/A"
+        ];
+
         return {
-          title: "Sales Teams Performance Directory Report",
-          headers: ["Sales Team Division Name", "Deals Completed", "Accumulated Sales Volume (BDT)", "Accumulated Team Payouts (BDT)"],
-          rows: teamRows.map(t => [
-            t.team, t.count, t.volume.toLocaleString(), t.totalInc.toLocaleString()
-          ]),
-          sums: [
-            "Total Teams: " + teamRows.length,
-            teamRows.reduce((sum, t) => sum + t.count, 0),
-            teamRows.reduce((sum, t) => sum + t.volume, 0).toLocaleString(),
-            teamRows.reduce((sum, t) => sum + t.totalInc, 0).toLocaleString() + " BDT"
-          ]
+          title: "Sales Teams Performance & Targets Auditing Report",
+          headers: ["Sales Team Division Name", "Team Leader", "Target Quota", "Achieved Sales", "Quota Completion %", "Accumulated Sales Volume (BDT)", "Total Distributed Commission (BDT)", "Performance Verdict"],
+          rows: calculatedRows,
+          sums: cumulativeSums
         };
 
       case 'proj-sales':

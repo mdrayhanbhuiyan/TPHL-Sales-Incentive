@@ -51,8 +51,11 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
   const [name, setName] = useState('');
   const [teamId, setTeamId] = useState('');
   const [projId, setProjId] = useState('');
-  const [target, setTarget] = useState(1200000);
+  const [target, setTarget] = useState(1);
   const [joiningDate, setJoiningDate] = useState('');
+  const [monthlyTargets, setMonthlyTargets] = useState<{ [key: string]: number }>({});
+  const [targetMonth, setTargetMonth] = useState('2026-06');
+  const [targetUnits, setTargetUnits] = useState(1);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -111,7 +114,8 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
           team_id: teamId,
           project_id: projId,
           target,
-          joining_date: joiningDate
+          joining_date: joiningDate,
+          monthly_targets: monthlyTargets
         })
       });
 
@@ -143,7 +147,8 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
           team_id: teamId,
           project_id: projId,
           target,
-          joining_date: joiningDate
+          joining_date: joiningDate,
+          monthly_targets: monthlyTargets
         })
       });
 
@@ -193,8 +198,9 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
     setName('');
     setTeamId(teams[0]?.id || '');
     setProjId(projects[0]?.id || '');
-    setTarget(1200000);
+    setTarget(1);
     setJoiningDate(new Date().toISOString().split('T')[0]);
+    setMonthlyTargets({});
     setError(null);
     setSuccess(null);
     setIsAddOpen(true);
@@ -206,8 +212,9 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
     setName(exec.name);
     setTeamId(exec.team_id);
     setProjId(exec.project_id);
-    setTarget(exec.target);
+    setTarget(exec.target || 1);
     setJoiningDate(exec.joining_date);
+    setMonthlyTargets(exec.monthly_targets || {});
     setError(null);
     setSuccess(null);
     setIsEditOpen(true);
@@ -608,13 +615,77 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-700">Individual Target Quota (Number of Flats)</label>
+                  <label className="text-xs font-semibold text-gray-700">Individual Base Target Quota (Number of Flats)</label>
                   <input
                     type="number"
                     value={target}
                     onChange={(e) => setTarget(Number(e.target.value))}
                     className="w-full text-xs bg-gray-50 rounded-lg px-3.5 py-2.5 border border-gray-100 focus:outline-none focus:border-indigo-500"
                   />
+                </div>
+
+                <div className="space-y-1.5 col-span-2 border-t border-gray-55 pt-3">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Month-wise Executive Target Configuration (Optional)</label>
+                  
+                  {/* Monthly Editor inputs */}
+                  <div className="grid grid-cols-3 gap-2 bg-gray-55/60 p-2.5 rounded-xl border border-gray-100/80">
+                    <input
+                      type="month"
+                      value={targetMonth}
+                      onChange={(e) => setTargetMonth(e.target.value)}
+                      className="col-span-1 text-[11px] font-bold bg-white border border-gray-200 rounded-lg p-1.5 focus:outline-none"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Override units"
+                      value={targetUnits}
+                      onChange={(e) => setTargetUnits(Number(e.target.value))}
+                      className="col-span-1 text-[11px] font-bold bg-white border border-gray-200 rounded-lg p-1.5 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!targetMonth) return;
+                        setMonthlyTargets(prev => ({
+                          ...prev,
+                          [targetMonth]: Number(targetUnits || 1)
+                        }));
+                      }}
+                      className="col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold py-1 rounded-lg transition"
+                    >
+                      Add Target
+                    </button>
+                  </div>
+
+                  {/* List of custom targets overrides */}
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {Object.keys(monthlyTargets).length === 0 ? (
+                      <span className="text-[10px] text-gray-400 italic">No monthly target overrides registered. Base target was applied instead.</span>
+                    ) : (
+                      Object.entries(monthlyTargets).map(([mKey, uVal]) => (
+                        <span
+                          key={mKey}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg text-[10px] font-bold"
+                        >
+                          📅 {mKey}: <strong>{uVal} Units</strong>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMonthlyTargets(prev => {
+                                const next = { ...prev };
+                                delete next[mKey];
+                                return next;
+                              });
+                            }}
+                            className="text-rose-500 hover:text-rose-700 font-extrabold"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">

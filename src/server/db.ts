@@ -17,7 +17,9 @@ import {
   Sale, 
   SalesIncentive, 
   AuditLog,
-  AppNotification
+  AppNotification,
+  ProjectOnSale,
+  UnitRegistration
 } from '../types';
 
 const STORE_PATH = path.join(process.cwd(), 'db-store.json');
@@ -34,6 +36,8 @@ export interface DatabaseStore {
   salesIncentives: SalesIncentive[];
   auditLogs: AuditLog[];
   notifications: AppNotification[];
+  projectsOnSale?: ProjectOnSale[];
+  unitRegistrations?: UnitRegistration[];
 }
 
 const DEFAULT_STORE: DatabaseStore = {
@@ -75,6 +79,8 @@ const DEFAULT_STORE: DatabaseStore = {
   },
   sales: [],
   salesIncentives: [],
+  projectsOnSale: [],
+  unitRegistrations: [],
   auditLogs: [
     {
       id: "log-1",
@@ -121,6 +127,8 @@ export function getStore(): DatabaseStore {
     if (!store.salesIncentives) store.salesIncentives = [];
     if (!store.auditLogs) store.auditLogs = [];
     if (!store.notifications) store.notifications = [];
+    if (!store.projectsOnSale) store.projectsOnSale = [];
+    if (!store.unitRegistrations) store.unitRegistrations = [];
     
     // Migration: safety conversion of executive targets from BDT values to physical unit numbers
     let migrated = false;
@@ -240,8 +248,12 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     const proj = store.projects.find(p => p.id === sale.project_id);
     if (!proj) return;
 
-    // Skip counting in monthly targets if project registration is No
-    if (proj.registration === 'No') return;
+    // Check if unit registration is Yes, falling back to project registration
+    const unitReg = store.unitRegistrations?.find(r => r.project_on_sale_id === sale.project_on_sale_id && r.unit_name === sale.unit_name);
+    const isRegistered = unitReg ? (unitReg.registered === 'Yes') : (proj.registration !== 'No');
+
+    // Skip counting in monthly targets if flat/project is not registered
+    if (!isRegistered) return;
 
     // Use either explicit target or project share
     const saleVolume = proj.land_share_amount; 
@@ -306,8 +318,9 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     else if (sNum === 6) basePercent = rule.sale_6_percent;
     else if (sNum === 7) basePercent = rule.sale_7_percent;
 
-    // Check if project is registered
-    const isRegistered = proj.registration !== 'No';
+    // Check if flat unit is registered
+    const unitReg = store.unitRegistrations?.find(r => r.project_on_sale_id === sale.project_on_sale_id && r.unit_name === sale.unit_name);
+    const isRegistered = unitReg ? (unitReg.registered === 'Yes') : (proj.registration !== 'No');
 
     // Base Incentive
     const baseIncentive = isRegistered ? proj.land_share_amount * (basePercent / 100) : 0;
@@ -315,9 +328,12 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     // Floor Bonus
     let floorBonus = 0;
     if (isRegistered) {
+      const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => p.id === sale.project_on_sale_id) : null;
+      const totalFloors = pos ? pos.floor_number : proj.floors;
+
       if (sale.floor_number === 1) {
         floorBonus = proj.land_share_amount * (rule.first_floor_bonus_percent / 100);
-      } else if (sale.floor_number === proj.floors) {
+      } else if (sale.floor_number === totalFloors) {
         floorBonus = proj.land_share_amount * (rule.top_floor_bonus_percent / 100);
       }
     }
@@ -328,8 +344,14 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     
     let targetBonus = 0;
     if (isRegistered && monthlyExecStats) {
+      // Find monthly target for executive, default to exec.target
+      const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+      const execTarget = (exec.monthly_targets && exec.monthly_targets[monthStr] !== undefined) 
+        ? exec.monthly_targets[monthStr] 
+        : exec.target;
+
       // Evaluate based on flat count instead of BDT volume sum
-      const achievementRate = exec.target > 0 ? (monthlyExecStats.sales.length / exec.target) * 100 : 0;
+      const achievementRate = execTarget > 0 ? (monthlyExecStats.sales.length / execTarget) * 100 : 0;
       const sortedMonthSales = [...monthlyExecStats.sales].sort((a,b) => new Date(a.sale_date).getTime() - new Date(b.sale_date).getTime());
       if (sortedMonthSales[0] && sortedMonthSales[0].id === sale.id) {
         if (achievementRate >= 100) {
@@ -347,7 +369,12 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       const teamVolume = teamSalesVolumeGroup[teamKey] || 0;
       const salesTeam = store.salesTeams.find(t => t.id === exec.team_id);
       if (salesTeam) {
-        const teamAchievementRate = (teamVolume / salesTeam.sales_target) * 100;
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const teamTarget = (salesTeam.monthly_targets && salesTeam.monthly_targets[monthStr] !== undefined)
+          ? salesTeam.monthly_targets[monthStr]
+          : salesTeam.sales_target;
+
+        const teamAchievementRate = teamTarget > 0 ? (teamVolume / teamTarget) * 100 : 0;
         if (teamAchievementRate >= 100) {
           const teamExecsIds = store.salesExecutives.filter(e => e.team_id === exec.team_id).map(e => e.id);
           const teamMonthSales = store.sales.filter(s => {

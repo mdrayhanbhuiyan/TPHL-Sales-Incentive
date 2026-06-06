@@ -35,8 +35,10 @@ import SalesEntryView from './components/SalesEntryView';
 import IncentivesView from './components/IncentivesView';
 import DocsView from './components/DocsView';
 import SettingsView from './components/SettingsView';
+import ProjectsOnSaleView from './components/ProjectsOnSaleView';
+import RegistrationView from './components/RegistrationView';
 
-type AppRoute = 'dashboard' | 'projects' | 'teams' | 'executives' | 'rules' | 'sales' | 'incentives' | 'docs' | 'settings';
+type AppRoute = 'dashboard' | 'projects-on-sale' | 'registration' | 'projects' | 'teams' | 'executives' | 'rules' | 'sales' | 'incentives' | 'docs' | 'settings';
 
 export default function App() {
   const [authToken, setAuthToken] = useState<string | null>('u-admin');
@@ -121,6 +123,8 @@ export default function App() {
   // Exec -> Performance, Record Bookings, Ledgers, Docs
   const menuItems = [
     { id: 'dashboard', label: 'Performance Analytics', icon: TrendingUp, roles: ['Admin', 'Sales Team Leader', 'Sales Executive'] },
+    { id: 'projects-on-sale', label: 'Projects On Sale', icon: Building, roles: ['Admin', 'Sales Team Leader', 'Sales Executive'] },
+    { id: 'registration', label: 'Unit Registration', icon: FileSpreadsheet, roles: ['Admin', 'Sales Team Leader', 'Sales Executive'] },
     { id: 'projects', label: 'Projects Directory', roles: ['Admin', 'Sales Team Leader'] },
     { id: 'teams', label: 'Sales Team Divisions', roles: ['Admin', 'Sales Team Leader'] },
     { id: 'executives', label: 'Sales Executives', roles: ['Admin'] },
@@ -137,6 +141,10 @@ export default function App() {
     switch (activeRoute) {
       case 'dashboard':
         return <DashboardView authToken={authToken} />;
+      case 'projects-on-sale':
+        return <ProjectsOnSaleView authToken={authToken} userRole={userProfile.role} />;
+      case 'registration':
+        return <RegistrationView authToken={authToken} userRole={userProfile.role} />;
       case 'projects':
         return <ProjectView authToken={authToken} userRole={userProfile.role} />;
       case 'teams':
@@ -161,6 +169,8 @@ export default function App() {
   const getRouteLabelAndEmoji = (route: AppRoute) => {
     switch (route) {
       case 'dashboard': return '📊 Dashboard';
+      case 'projects-on-sale': return '🏷️ Projects On Sale';
+      case 'registration': return '🔑 Unit Registration';
       case 'projects': return '🏢 Projects Directory';
       case 'teams': return '👥 Sales Divisions';
       case 'executives': return '👤 Sales Executives';

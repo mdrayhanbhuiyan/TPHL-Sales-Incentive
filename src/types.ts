@@ -35,6 +35,7 @@ export interface SalesTeam {
   team_name: string;
   team_leader: string; // User ID or Name of team leader
   sales_target: number; // in BDT
+  monthly_targets?: { [key: string]: number }; // key: YYYY-MM -> target units
 }
 
 export interface TeamProject {
@@ -49,8 +50,9 @@ export interface SalesExecutive {
   name: string;
   team_id: string;
   project_id: string; // Principal assigned project id
-  target: number; // individual sales target in BDT
+  target: number; // individual sales target
   joining_date: string;
+  monthly_targets?: { [key: string]: number }; // key: YYYY-MM -> target units
 }
 
 export interface IncentiveRule {
@@ -85,6 +87,7 @@ export interface Sale {
   sale_number: number; // order of sale for this project
   sale_date: string;
   executive_id: string;
+  project_on_sale_id?: string;
 }
 
 export interface SalesIncentive {
@@ -119,3 +122,24 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
 }
+
+export interface ProjectOnSale {
+  id: string;
+  project_name: string; // Sale or property name
+  flat_unit_size: string; // SFT or size, e.g. "1200 SFT"
+  project_id: string; // Links to project from Projects Directory
+  floor_number: number; // Total number of floors
+  units_per_floor: number; // Units per floor (e.g., 2, 4)
+  total_units: number; // floor_number * units_per_floor
+  created_at: string;
+}
+
+export interface UnitRegistration {
+  id: string;
+  project_on_sale_id: string;
+  unit_name: string; // e.g. "1A", "2B"
+  registered: 'Yes' | 'No';
+  registration_date?: string;
+  created_at: string;
+}
+
