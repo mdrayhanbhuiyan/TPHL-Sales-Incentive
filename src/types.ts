@@ -88,6 +88,7 @@ export interface Sale {
   sale_date: string;
   executive_id: string;
   project_on_sale_id?: string;
+  buyer_name?: string;
 }
 
 export interface SalesIncentive {

@@ -48,6 +48,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
   const [floorNumber, setFloorNumber] = useState(1);
   const [saleDate, setSaleDate] = useState('');
   const [execId, setExecId] = useState('');
+  const [buyerName, setBuyerName] = useState('');
 
   // List of generated units based on selected Campaign structure
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
@@ -171,7 +172,8 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
           unit_measure: unitMeasure,
           floor_number: floorNumber,
           sale_date: saleDate,
-          executive_id: finalExecId
+          executive_id: finalExecId,
+          buyer_name: buyerName
         })
       });
 
@@ -211,7 +213,8 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
           unit_measure: unitMeasure,
           floor_number: floorNumber,
           sale_date: saleDate,
-          executive_id: finalExecId
+          executive_id: finalExecId,
+          buyer_name: buyerName
         })
       });
 
@@ -278,6 +281,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
     }
 
     setSaleDate(new Date().toISOString().split('T')[0]);
+    setBuyerName('');
     
     if (userRole === 'Sales Executive') {
       const matched = executives.find(ex => ex.employee_id === userProfile.employee_id || ex.id === userProfile.id);
@@ -300,6 +304,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
     setFloorNumber(sale.floor_number);
     setSaleDate(sale.sale_date);
     setExecId(sale.executive_id);
+    setBuyerName(sale.buyer_name || '');
 
     // Load available units based on this campaign
     const campaign = projectsOnSale.find(p => p.id === (sale.project_on_sale_id || ''));
@@ -422,7 +427,14 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
                           Sale #{sale.sale_number}
                         </span>
                       </td>
-                      <td className="p-4 font-extrabold text-gray-950 font-mono">{sale.unit_name}</td>
+                      <td className="p-4 font-extrabold text-gray-950 font-mono">
+                        <div>{sale.unit_name}</div>
+                        {sale.buyer_name && (
+                          <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold normal-case mt-0.5 whitespace-nowrap" title="Buyer Name">
+                            👤 {sale.buyer_name}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-4">
                         <span className="flex items-center gap-1 text-gray-600 font-bold">
                           <Layers className="w-3.5 h-3.5 text-gray-400" />
@@ -574,6 +586,17 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
                     value={saleDate}
                     onChange={(e) => setSaleDate(e.target.value)}
                     className="w-full text-xs font-semibold bg-white rounded-xl px-3.5 py-2 border border-gray-200 focus:outline-indigo-600 font-mono text-gray-800"
+                  />
+                </div>
+
+                <div className="col-span-2 space-y-1">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Buyer / Customer Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter Buyer Full Name (e.g. Sajjad Ahmed)"
+                    value={buyerName}
+                    onChange={(e) => setBuyerName(e.target.value)}
+                    className="w-full text-xs font-semibold bg-white rounded-xl px-3.5 py-2.5 border border-gray-200 focus:outline-indigo-600 text-gray-800"
                   />
                 </div>
 

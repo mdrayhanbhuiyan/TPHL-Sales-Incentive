@@ -22,7 +22,12 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   HelpCircle,
-  X
+  X,
+  User,
+  Calendar,
+  Check,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
 import { Project, ProjectOnSale } from '../types';
 
@@ -37,6 +42,20 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Real-time floor plan datasets
+  const [sales, setSales] = useState<any[]>([]);
+  const [unitRegistrations, setUnitRegistrations] = useState<any[]>([]);
+  const [executives, setExecutives] = useState<any[]>([]);
+
+  // Selected sub-unit inspection panel state
+  const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
+
+  // Registration deed edit fields
+  const [editRegStatus, setEditRegStatus] = useState<'Yes' | 'No'>('No');
+  const [editRegDate, setEditRegDate] = useState<string>('');
+  const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(null);
+  const [regUpdating, setRegUpdating] = useState<boolean>(false);
+
   // Form states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,6 +69,13 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
 
   // Details popover state
   const [selectedProject, setSelectedProject] = useState<ProjectOnSale | null>(null);
+  const [activePlanTab, setActivePlanTab] = useState<'plan' | 'table'>('plan');
+  const [selectedHistoryFlat, setSelectedHistoryFlat] = useState<{
+    unitName: string;
+    sale: any;
+    exec: any;
+    status: string;
+  } | null>(null);
 
   // Bulk CSV import states
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
@@ -78,6 +104,28 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       });
       const dirData = await dirRes.json();
       setDirectoryProjects(Array.isArray(dirData) ? dirData : []);
+
+      // Fetch sales logs
+      const salesRes = await fetch('/api/sales', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const salesData = await salesRes.json();
+      setSales(Array.isArray(salesData) ? salesData : []);
+
+      // Fetch unit registrations mapping
+      const regRes = await fetch('/api/unit-registrations', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const regData = await regRes.json();
+      setUnitRegistrations(Array.isArray(regData) ? regData : []);
+
+      // Fetch sales executives mapping
+      const execRes = await fetch('/api/executives', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const execData = await execRes.json();
+      setExecutives(Array.isArray(execData) ? execData : []);
+
     } catch (err) {
       console.error(err);
       setError("Failed to load systems data.");
@@ -89,6 +137,12 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
   useEffect(() => {
     fetchData();
   }, [authToken]);
+
+  const handleOpenDetails = (project: ProjectOnSale) => {
+    setSelectedProject(project);
+    setSelectedUnit(null);
+    setRegSuccessMessage(null);
+  };
 
   const handleOpenCreateModal = () => {
     setEditingId(null);
@@ -318,6 +372,39 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
     return units;
   };
 
+  const handleUpdateUnitRegistration = async (regId: string) => {
+    setRegUpdating(true);
+    setRegSuccessMessage(null);
+    try {
+      const res = await fetch(`/api/unit-registrations/${regId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          registered: editRegStatus,
+          registration_date: editRegStatus === 'Yes' ? editRegDate : ''
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Failed to update registration record.");
+      } else {
+        const updatedReg = await res.json();
+        // Update local status in unitRegistrations state
+        setUnitRegistrations(prev => prev.map(r => r.id === regId ? updatedReg : r));
+        setRegSuccessMessage("Deed registration status successfully synchronized!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Server connection failure.");
+    } finally {
+      setRegUpdating(false);
+    }
+  };
+
   return (
     <div className="space-y-6" id="projects-on-sale-view">
       {/* Header and Controls */}
@@ -424,11 +511,11 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                   <span className="text-[10px] text-gray-400 font-mono">ID: {project.id}</span>
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => setSelectedProject(project)}
+                      onClick={() => handleOpenDetails(project)}
                       className="p-1 px-2 hover:bg-gray-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-                      title="View Generated Flats Matrix"
+                      title="View Interactive Floor Plan Status"
                     >
-                      <Eye className="w-3.5 h-3.5" /> Details
+                      <Eye className="w-3.5 h-3.5" /> Floor Plan
                     </button>
                     {isAdmin && (
                       <>
@@ -454,50 +541,560 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
         </div>
       )}
 
-      {/* Generated Units Details Dropdown Modal/Card */}
-      {selectedProject && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full border border-gray-100 dark:border-slate-800 p-6 shadow-2xl relative space-y-4">
-            <button
-              onClick={() => setSelectedProject(null)}
-              className="absolute right-4 top-4 text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 p-1 rounded-lg text-xs font-bold"
-            >
-              ✕
-            </button>
-            <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                <Layers className="w-5 h-5 text-indigo-600" /> Units Matrix: {selectedProject.project_name}
-              </h3>
-              <p className="text-xs text-gray-400">
-                Generated based on {selectedProject.floor_number} floors and {selectedProject.units_per_floor} units per floor structure configurations.
-              </p>
-            </div>
+      {/* Interactive Floor Plan availability matrix & Unit Inspector Modal */}
+      {selectedProject && (() => {
+        // Evaluate dynamic grids and state helpers
+        const getUnitStatusDetails = (unitName: string) => {
+          const sale = sales.find(s => s.project_on_sale_id === selectedProject.id && s.unit_name === unitName);
+          const reg = unitRegistrations.find(r => r.project_on_sale_id === selectedProject.id && r.unit_name === unitName);
+          
+          let status: 'Available' | 'Booked' | 'Sold' = 'Available';
+          if (sale) {
+            if (reg && reg.registered === 'Yes') {
+              status = 'Sold'; // Registered and Sale confirmed
+            } else {
+              status = 'Booked'; // Sale confirmed but registration pending
+            }
+          }
+          return { status, sale, reg };
+        };
 
-            <div className="max-h-60 overflow-y-auto border border-gray-100 dark:border-slate-800 p-4 rounded-2xl bg-gray-50/50 dark:bg-slate-900/60">
-              <div className="grid grid-cols-4 gap-2.5">
-                {getUnitNamesList(selectedProject.floor_number, selectedProject.units_per_floor).map((unitName) => (
-                  <div
-                    key={unitName}
-                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl p-2.5 text-center shadow-2xs"
-                  >
-                    <span className="block font-bold text-xs text-indigo-600 dark:text-indigo-400 font-mono">{unitName}</span>
-                    <span className="text-[9px] text-gray-400 uppercase font-bold mt-0.5">Floor {parseInt(unitName)}</span>
-                  </div>
-                ))}
+        const handleUnitClick = (unitName: string) => {
+          const { reg } = getUnitStatusDetails(unitName);
+          setSelectedUnit(unitName);
+          setRegSuccessMessage(null);
+          if (reg) {
+            setEditRegStatus(reg.registered);
+            setEditRegDate(reg.registration_date ? reg.registration_date.substring(0, 10) : '');
+          } else {
+            setEditRegStatus('No');
+            setEditRegDate('');
+          }
+        };
+
+        // Stack floors logically from top down to first floor
+        const floorsArray: number[] = [];
+        for (let f = selectedProject.floor_number; f >= 1; f--) {
+          floorsArray.push(f);
+        }
+
+        const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+        const getUnitsForFloor = (floorNum: number, unitsCount: number) => {
+          const uList: string[] = [];
+          for (let u = 0; u < unitsCount; u++) {
+            const letter = letters[u] || String.fromCharCode(65 + u);
+            uList.push(`${floorNum}${letter}`);
+          }
+          return uList;
+        };
+
+        // Determine column styling
+        const uCount = selectedProject.units_per_floor;
+        const gridColsClass = 
+          uCount === 1 ? 'grid-cols-1' :
+          uCount === 2 ? 'grid-cols-2' :
+          uCount === 3 ? 'grid-cols-3' :
+          uCount === 4 ? 'grid-cols-4' :
+          uCount === 5 ? 'grid-cols-5' :
+          uCount === 6 ? 'grid-cols-6' :
+          uCount === 8 ? 'grid-cols-8' : 'grid-cols-4';
+
+        // Read selected unit properties
+        const inspector = selectedUnit ? getUnitStatusDetails(selectedUnit) : null;
+        const salesRep = inspector?.sale;
+        const regRep = inspector?.reg;
+        const execMapped = salesRep ? executives.find(e => e.id === salesRep.executive_id) : null;
+
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-5xl w-full border border-gray-100 dark:border-slate-800 p-6 shadow-2xl relative space-y-6 flex flex-col max-h-[90vh]">
+              
+              {/* Header block */}
+              <div className="flex items-start justify-between pb-4 border-b border-gray-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-indigo-600" /> Real-time status: {selectedProject.project_name}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Live Booking and Deed Registry details across {selectedProject.floor_number} levels ({selectedProject.total_units} total flats).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProject(null); setActivePlanTab('plan'); setSelectedHistoryFlat(null); }}
+                  className="text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 p-2 rounded-xl text-xs font-bold transition-all"
+                >
+                  ✕
+                </button>
               </div>
-            </div>
 
-            <div className="flex justify-end">
-              <button
-                onClick={() => setSelectedProject(null)}
-                className="bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition"
-              >
-                Close View
-              </button>
+              {/* View Tab Selector & Legend Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-slate-850/20 p-3 rounded-2xl border border-gray-100 dark:border-slate-850">
+                <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-slate-900 rounded-xl border border-gray-150 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setActivePlanTab('plan')}
+                    className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${activePlanTab === 'plan' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'}`}
+                  >
+                    Interactive Floor Plan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePlanTab('table')}
+                    className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${activePlanTab === 'table' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'}`}
+                  >
+                    Availability Table
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 text-[10.5px]">
+                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-semibold">
+                    <span className="w-3 h-3 rounded-md bg-slate-50 border border-gray-200 dark:bg-slate-850 dark:border-slate-700 block" /> Vacant
+                  </span>
+                  <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
+                    <span className="w-3 h-3 rounded-md bg-amber-500 border border-amber-600 block" /> Booked
+                  </span>
+                  <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
+                    <span className="w-3 h-3 rounded-md bg-emerald-600 border border-emerald-700 block" /> Fully Sold
+                  </span>
+                </div>
+              </div>
+
+              {activePlanTab === 'plan' ? (
+                /* Grid content split view */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden flex-1">
+                  
+                  {/* Left Panel: Vertical Floor Stack */}
+                  <div className="lg:col-span-7 flex flex-col space-y-4 overflow-hidden h-full">
+                    
+                    {/* Scrollable multi-floor architecture view */}
+                    <div className="flex-1 overflow-y-auto space-y-3.5 pr-2 border border-gray-50 dark:border-slate-850 p-2 rounded-2xl bg-gray-50/20 dark:bg-slate-900/40">
+                      {floorsArray.map((floorNum) => {
+                        const units = getUnitsForFloor(floorNum, selectedProject.units_per_floor);
+                        const isTopFloor = floorNum === selectedProject.floor_number;
+                        const isFirstFloor = floorNum === 1;
+
+                        return (
+                          <div 
+                            key={floorNum} 
+                            className="flex items-stretch gap-3 bg-white dark:bg-slate-850 rounded-2xl border border-gray-100 dark:border-slate-800/80 p-2 shadow-xs transition"
+                          >
+                            {/* Floor label badge with specialized layout values */}
+                            <div className="w-16 flex-shrink-0 flex flex-col justify-center items-center rounded-xl bg-gray-50 dark:bg-slate-800/60 p-1 text-center border border-gray-100/60 dark:border-slate-700 text-[10px] font-bold">
+                              <span className="text-gray-400 uppercase tracking-widest text-[8px]">LEVEL</span>
+                              <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">{floorNum}</span>
+                              {isTopFloor && <span className="text-[7px] text-amber-600 font-extrabold uppercase mt-0.5 bg-amber-50 dark:bg-amber-950/40 px-1 rounded">TOP</span>}
+                              {isFirstFloor && <span className="text-[7px] text-indigo-600 font-extrabold uppercase mt-0.5 bg-indigo-50 dark:bg-indigo-950/40 px-1 rounded">1st</span>}
+                            </div>
+
+                            {/* Dynamic unit grid representing level apartments */}
+                            <div className={`flex-1 grid ${gridColsClass} gap-2`}>
+                              {units.map((unitName) => {
+                                const { status } = getUnitStatusDetails(unitName);
+                                const isSelected = selectedUnit === unitName;
+
+                                let btnClasses = "relative transition-all duration-200 py-3 rounded-xl border text-center font-bold text-xs cursor-pointer shadow-3xs flex flex-col items-center justify-center min-h-[50px] ";
+                                if (isSelected) {
+                                  btnClasses += "ring-3 ring-indigo-500 ring-offset-2 dark:ring-indigo-400 scale-[1.03] z-10 font-black ";
+                                }
+
+                                if (status === 'Sold') {
+                                  btnClasses += "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-emerald-900/10";
+                                } else if (status === 'Booked') {
+                                  btnClasses += "bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-amber-900/10";
+                                } else {
+                                  btnClasses += "bg-white hover:bg-indigo-50/50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:text-indigo-600 border-gray-200 dark:border-slate-700";
+                                }
+
+                                return (
+                                  <button
+                                    key={unitName}
+                                    type="button"
+                                    onClick={() => handleUnitClick(unitName)}
+                                    className={btnClasses}
+                                  >
+                                    <span className="text-xs font-mono font-bold tracking-tight">{unitName}</span>
+                                    <span className="text-[8px] font-semibold tracking-wider uppercase opacity-85 mt-0.5">
+                                      {status === 'Sold' ? 'Sold' : status === 'Booked' ? 'Booked' : 'Vacant'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right Panel: Selected Unit Properties Inspector */}
+                  <div className="lg:col-span-5 border border-gray-100 dark:border-slate-800 rounded-3xl p-4 bg-gray-50/30 dark:bg-slate-850/20 flex flex-col h-full overflow-y-auto">
+                    
+                    {!selectedUnit ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3.5">
+                        <div className="p-4 bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full animate-pulse">
+                          <Building2 className="w-8 h-8" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wider">Select Unit to Inspect</h4>
+                          <p className="text-[11px] text-gray-400 mt-1 max-w-xs leading-relaxed">
+                            Click on any flat box in the floor schema on the left to review its booking timeline, sales execution record, target sequences, and directly manage deed registrations.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 text-xs">
+                        
+                        {/* Unit Title and Current Status */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-sm font-bold text-gray-900 dark:text-white">Unit {selectedUnit} Properties</h4>
+                            <span className="text-[9px] text-gray-400 font-mono">Floor: {parseInt(selectedUnit)} of {selectedProject.project_name}</span>
+                          </div>
+                          
+                          <div>
+                            {inspector?.status === 'Sold' ? (
+                              <span className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-100/60 dark:border-emerald-900/50 flex items-center gap-1">
+                                ✓ Sold &amp; Registered
+                              </span>
+                            ) : inspector?.status === 'Booked' ? (
+                              <span className="bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-full text-[10px] font-bold border border-amber-100/60 dark:border-amber-900/50 flex items-center gap-1">
+                                ⚠ Booked (Reg Pending)
+                              </span>
+                            ) : (
+                              <span className="bg-slate-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-gray-200 dark:border-slate-700 flex items-center gap-1">
+                                Vacant Available
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Display Data Cards depending on status */}
+                        {inspector?.status === 'Available' ? (
+                          <div className="bg-white dark:bg-slate-800/40 p-4 border border-gray-150/60 dark:border-slate-850 rounded-2xl text-[11px] space-y-2 text-gray-500 leading-relaxed dark:text-slate-400">
+                            <p>
+                              🏠 This flat is currently <strong>Vacant (Available)</strong>. There is no active booking logged under the sequence engine.
+                            </p>
+                            <p className="text-[10px] text-gray-400 bg-indigo-50/50 dark:bg-indigo-950/25 p-2.5 rounded-xl border border-indigo-100/40 dark:border-indigo-950">
+                              💡 <strong>Incentive Rule Hint:</strong> Every master purchase sequence (1st to 7th sale) recalculates bonuses in real-time once a sales executive registers a new booking with this unit code.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            
+                            {/* Sales Contract Segment */}
+                            <div className="bg-white dark:bg-slate-900/80 rounded-2xl border border-gray-100 dark:border-slate-800/80 p-3.5 space-y-2">
+                              <h5 className="font-bold text-gray-800 dark:text-slate-300 border-b border-gray-100 dark:border-slate-850 pb-1.5 uppercase tracking-wider text-[9px] text-indigo-600 dark:text-indigo-400">
+                                Sales Log Details
+                              </h5>
+                              
+                              <div className="grid grid-cols-2 gap-2 text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                                <div>
+                                  <span className="text-[10px] text-gray-400 block font-normal">Sale Date</span>
+                                  <span className="font-mono font-bold text-gray-800 dark:text-slate-200 flex items-center gap-1">
+                                    <Calendar className="w-3.5 h-3.5 text-gray-400" /> {salesRep?.sale_date || 'N/A'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-gray-400 block font-normal">Chronological Sequence</span>
+                                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                                    Sale #{salesRep?.sale_number || 1}
+                                  </span>
+                                </div>
+                                <div className="col-span-2 border-t border-gray-100 dark:border-slate-850 pt-2 mt-1">
+                                  <span className="text-[10px] text-gray-400 block font-normal">Acquiring Executive</span>
+                                  <span className="font-bold text-gray-800 dark:text-slate-200 flex items-center gap-1.5 mt-0.5">
+                                    <User className="w-3.5 h-3.5 text-indigo-500" />
+                                    {execMapped ? execMapped.name : `ID: ${salesRep?.executive_id || 'N/A'}`}
+                                  </span>
+                                  {execMapped && (
+                                    <span className="block text-[10px] text-gray-400 mt-0.5 ml-5 font-mono">
+                                      Emp ID: {execMapped.employee_id} | Team: {execMapped.team_name || 'Unassigned'}
+                                    </span>
+                                  )}
+                                </div>
+                                {salesRep?.buyer_name && (
+                                  <div className="col-span-2 border-t border-gray-100 dark:border-slate-850 pt-2 mt-1">
+                                    <span className="text-[10px] text-gray-400 block font-normal">Registered Buyer Full Name</span>
+                                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 mt-0.5 font-mono">
+                                      👤 {salesRep.buyer_name}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Deed Registration Information Segment */}
+                            <div className="bg-white dark:bg-slate-900/80 rounded-2xl border border-gray-100 dark:border-slate-800/80 p-3.5 space-y-2">
+                              <h5 className="font-bold text-gray-800 dark:text-slate-300 border-b border-gray-100 dark:border-slate-850 pb-1.5 uppercase tracking-wider text-[9px] text-indigo-600 dark:text-indigo-400">
+                                Deed Registration Status
+                              </h5>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-gray-400">Current Record Status:</span>
+                                  <span className={`font-bold uppercase ${regRep?.registered === 'Yes' ? 'text-emerald-600' : 'text-amber-500'}`}>
+                                    {regRep?.registered === 'Yes' ? 'Registered fully' : 'Deed Booking Pending'}
+                                  </span>
+                                </div>
+                                {regRep?.registered === 'Yes' && regRep?.registration_date && (
+                                  <div className="flex items-center justify-between text-[11px] border-t border-gray-50 dark:border-slate-850 pt-1.5 font-mono">
+                                    <span className="text-gray-400">Deed Confirmed on:</span>
+                                    <span className="font-bold text-gray-800 dark:text-slate-200">{regRep.registration_date.substring(0, 10)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Inline registration deed management for authorized users */}
+                            {regRep && (
+                              <div className="bg-indigo-50/40 dark:bg-slate-900/30 rounded-2xl border border-indigo-100/50 dark:border-slate-800/60 p-4 space-y-3.5">
+                                <h5 className="font-bold text-gray-800 dark:text-slate-200 flex items-center gap-1 uppercase tracking-wider text-[9px] text-indigo-700 dark:text-indigo-400">
+                                  ⚙️ Inline Deed Status Control
+                                </h5>
+
+                                <div className="space-y-2">
+                                  <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase">Is Deed Registered?</label>
+                                  <select
+                                    value={editRegStatus}
+                                    onChange={(e) => setEditRegStatus(e.target.value as 'Yes' | 'No')}
+                                    className="w-full text-xs font-semibold px-3 py-2 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600"
+                                  >
+                                    <option value="Yes">Yes (Fully Registered)</option>
+                                    <option value="No">No (Pending Booked)</option>
+                                  </select>
+                                </div>
+
+                                {editRegStatus === 'Yes' && (
+                                  <div className="space-y-2 animate-fade-in">
+                                    <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase">Registered Date</label>
+                                    <input
+                                      type="date"
+                                      required
+                                      value={editRegDate}
+                                      onChange={(e) => setEditRegDate(e.target.value)}
+                                      className="w-full text-xs font-semibold px-3 py-2 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white font-mono focus:outline-indigo-600"
+                                    />
+                                  </div>
+                                )}
+
+                                {regSuccessMessage && (
+                                  <div className="bg-emerald-55 font-semibold text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-450 p-2 text-[10.5px] rounded-lg border border-emerald-100 dark:border-emerald-900/50 flex items-center gap-1.5">
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>{regSuccessMessage}</span>
+                                  </div>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateUnitRegistration(regRep.id)}
+                                  disabled={regUpdating || (editRegStatus === 'Yes' && !editRegDate)}
+                                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white dark:text-white text-xs font-bold py-2 px-3 rounded-xl transition cursor-pointer shadow-sm text-center flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {regUpdating ? "Saving registry details..." : "Synchronize Registry Record"}
+                                </button>
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              ) : (
+                /* Availability Table view of all campaign flats */
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-slate-50/40 dark:bg-slate-900/20 border border-gray-100 dark:border-slate-800 rounded-2xl p-2">
+                  <div className="overflow-y-auto flex-1">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-gray-100 dark:bg-slate-850/80 text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-gray-150 dark:border-slate-800 text-[9px]">
+                          <th className="p-3">Flat Identifier</th>
+                          <th className="p-3">Level</th>
+                          <th className="p-3">SFT Area</th>
+                          <th className="p-3">Current Status</th>
+                          <th className="p-3">Buyer Contact Name</th>
+                          <th className="p-3">Allocated Broker Executive</th>
+                          <th className="p-3 text-right">Operations</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-slate-800 text-gray-700 dark:text-slate-300 font-semibold">
+                        {getUnitNamesList(selectedProject.floor_number, selectedProject.units_per_floor).map((unitName) => {
+                          const { status, sale, reg } = getUnitStatusDetails(unitName);
+                          const exec = sale ? executives.find(e => e.id === sale.executive_id) : null;
+
+                          return (
+                            <tr 
+                              key={unitName}
+                              onClick={() => setSelectedHistoryFlat({ unitName, sale, exec, status })}
+                              className="hover:bg-indigo-50/30 dark:hover:bg-slate-800/40 transition-all cursor-pointer group"
+                            >
+                              <td className="p-3 font-mono font-bold text-indigo-700 dark:text-indigo-400 group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                                🏢 Unit {unitName}
+                              </td>
+                              <td className="p-3 text-gray-500 dark:text-slate-400 font-mono">Floor {parseInt(unitName)}</td>
+                              <td className="p-3 font-mono font-semibold text-gray-700 dark:text-slate-200">{selectedProject.flat_unit_size}</td>
+                              <td className="p-3">
+                                {status === 'Sold' ? (
+                                  <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/40 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                                    ✓ Fully Sold
+                                  </span>
+                                ) : status === 'Booked' ? (
+                                  <span className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/40 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                                    ⚠ Booked (Pending Reg.)
+                                  </span>
+                                ) : (
+                                  <span className="bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                                    Vacant
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 font-semibold text-gray-950 dark:text-white">
+                                {sale?.buyer_name ? (
+                                  <span className="flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
+                                    👤 {sale.buyer_name}
+                                  </span>
+                                ) : sale ? (
+                                  <span className="text-gray-400 italic">Not logged</span>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                {exec ? (
+                                  <div>
+                                    <div className="font-bold text-gray-900 dark:text-slate-100">{exec.name}</div>
+                                    <div className="text-[9px] text-gray-400 font-mono">ID: {exec.employee_id}</div>
+                                  </div>
+                                ) : sale ? (
+                                  <span className="text-[10px] text-gray-400 font-mono">ID: {sale.executive_id}</span>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right">
+                                <button
+                                  type="button"
+                                  className="text-indigo-600 dark:text-indigo-400 font-extrabold uppercase text-[10px] hover:underline flex items-center gap-1 ml-auto"
+                                >
+                                  View History <ExternalLink className="w-3 h-3" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer controls */}
+              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-gray-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProject(null); setActivePlanTab('plan'); setSelectedHistoryFlat(null); }}
+                  className="bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-755 text-gray-700 dark:text-slate-300 text-xs font-bold px-4 py-2.5 rounded-xl transition cursor-pointer"
+                >
+                  Close Plan View
+                </button>
+              </div>
+
+              {/* Flat detailed historical booking modal popover */}
+              {selectedHistoryFlat && (() => {
+                const hSale = selectedHistoryFlat.sale;
+                const hExec = selectedHistoryFlat.exec;
+                const hReg = hSale ? unitRegistrations.find(r => r.project_on_sale_id === selectedProject.id && r.unit_name === selectedHistoryFlat.unitName) : null;
+
+                return (
+                  <div className="fixed inset-0 z-[60] bg-gray-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border border-gray-150 dark:border-slate-800 p-6 shadow-2xl relative space-y-4 animate-scale-in">
+                      <div className="flex items-start justify-between border-b border-gray-150 dark:border-slate-800 pb-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-indigo-600" /> Live Unit History Report
+                          </h4>
+                          <span className="text-[9px] text-gray-400 font-bold tracking-wider font-mono uppercase bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md mt-0.5 block w-fit">
+                            Flat Space {selectedHistoryFlat.unitName}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHistoryFlat(null)}
+                          className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded-lg transition text-xs font-black"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      {hSale ? (
+                        <div className="space-y-3">
+                          <div className="bg-indigo-50/40 dark:bg-slate-850 p-4 border border-indigo-100/40 dark:border-slate-800 rounded-2xl space-y-2.5 text-xs text-slate-800 dark:text-slate-300">
+                            <div className="flex items-center justify-between border-b border-dashed border-gray-200 dark:border-slate-700 pb-1.5">
+                              <span className="text-gray-400 font-medium">Availability Status:</span>
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${selectedHistoryFlat.status === 'Sold' ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'}`}>
+                                {selectedHistoryFlat.status === 'Sold' ? 'Sold & Registered' : 'Booked (Reg Pending)'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-400">Buyer Full Name:</span>
+                              <span className="font-extrabold text-indigo-650 dark:text-indigo-455 font-mono">{hSale.buyer_name || 'Not filled / N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-400">Booking Contract Date:</span>
+                              <span className="font-bold font-mono">{hSale.sale_date}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-400">Sales Order Order:</span>
+                              <span className="font-bold text-gray-800 dark:text-white">Sale No. #{hSale.sale_number}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-400">Registry Deed Documented:</span>
+                              <span className="font-bold font-mono">
+                                {hReg?.registered === 'Yes' ? `Yes (${hReg.registration_date?.substring(0, 10)})` : 'No (Pending Deed Confirmation)'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <span className="text-[8px] uppercase tracking-wider font-black text-gray-400 flex items-center gap-1">Allocated Sales Broker</span>
+                            <div className="flex items-center gap-2.5 bg-gray-50 dark:bg-slate-850/50 p-3 rounded-2xl border border-gray-100 dark:border-slate-800 text-xs">
+                              <div className="p-2 bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                                <User className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-gray-900 dark:text-white">{hExec ? hExec.name : `Executive Reference ID: ${hSale.executive_id}`}</p>
+                                <p className="text-[9px] text-gray-400 font-mono mt-0.5">Emp ID Badge: {hExec ? hExec.employee_id : 'N/A'}</p>
+                                {hExec?.team_name && <p className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider mt-0.5">{hExec.team_name} Team Block</p>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400 space-y-2 text-xs">
+                          <p className="font-extrabold text-indigo-600">🏠 Flat is vacant / Available</p>
+                          <p className="max-w-xs mx-auto text-gray-400 text-[11px] leading-relaxed">No booking documents, buyer registrations, or sales logs exist under flat code {selectedHistoryFlat.unitName}.</p>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end pt-3 border-t border-gray-100 dark:border-slate-850">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHistoryFlat(null)}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xs transition"
+                        >
+                          Acknowledge & Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Save Modal */}
       {isModalOpen && (

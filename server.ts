@@ -390,6 +390,105 @@ async function startServer() {
       };
     });
 
+    // Generate Activity Timeline
+    const activities: any[] = [];
+
+    // 1. Sales entries
+    targetSales.forEach(sale => {
+      const proj = store.projects.find(p => p.id === sale.project_id);
+      const exec = store.salesExecutives.find(e => e.id === sale.executive_id);
+      activities.push({
+        id: `activity-sale-${sale.id}`,
+        type: 'sale',
+        date: sale.sale_date,
+        title: `Booking Logged: Unit ${sale.unit_name}`,
+        description: `Flat ${sale.unit_name} at Level ${sale.floor_number} of "${proj ? proj.project_name : 'Property'}" registered under Sequenced Sale #${sale.sale_number || 1} by Executive ${exec ? exec.name : 'Unknown'}${sale.buyer_name ? ` (Buyer: ${sale.buyer_name})` : ''}.`,
+        metadata: proj ? `${(proj.land_share_amount / 100000).toFixed(1)} Lakh BDT` : '',
+        timestamp: new Date(sale.sale_date).getTime()
+      });
+    });
+
+    // 2. Milestone Achievements from Incentives
+    targetIncentives.forEach(inc => {
+      const sale = store.sales.find(s => s.id === inc.sale_id);
+      if (!sale) return;
+      const proj = store.projects.find(p => p.id === inc.project_id);
+      const exec = store.salesExecutives.find(e => e.id === inc.executive_id);
+      const projName = proj ? proj.project_name : 'Project';
+      const execName = exec ? exec.name : 'Executive';
+
+      if (inc.floor_bonus > 0) {
+        activities.push({
+          id: `activity-milestone-fb-${inc.id}`,
+          type: 'milestone',
+          date: sale.sale_date,
+          title: `Floor Level Premium Unlocked 🏢`,
+          description: `Executive ${execName} unlocked a dedicated level bonus on Flat ${sale.unit_name} at floor ${sale.floor_number} in "${projName}".`,
+          metadata: `+${inc.floor_bonus.toLocaleString()} BDT`,
+          timestamp: new Date(sale.sale_date).getTime() + 10
+        });
+      }
+
+      if (inc.target_bonus > 0) {
+        activities.push({
+          id: `activity-milestone-tb-${inc.id}`,
+          type: 'milestone',
+          date: sale.sale_date,
+          title: `Sales Target Bonus Cleared 🎯`,
+          description: `Executive ${execName} hit individual units threshold, triggering high-performance commission multiplier.`,
+          metadata: `+${inc.target_bonus.toLocaleString()} BDT`,
+          timestamp: new Date(sale.sale_date).getTime() + 20
+        });
+      }
+
+      if (inc.team_bonus > 0) {
+        const team = exec && exec.team_id ? store.salesTeams.find(t => t.id === exec.team_id) : null;
+        activities.push({
+          id: `activity-milestone-teamb-${inc.id}`,
+          type: 'milestone',
+          date: sale.sale_date,
+          title: `Team Bonus Achieved 👥`,
+          description: `Sales team "${team ? team.team_name : 'Assigned Team'}" achieved monthly collection milestone, earning bonus for ${execName}.`,
+          metadata: `+${inc.team_bonus.toLocaleString()} BDT`,
+          timestamp: new Date(sale.sale_date).getTime() + 30
+        });
+      }
+    });
+
+    // 3. New Project registrations (Directory Projects & Campaigns)
+    store.projects.forEach(proj => {
+      const dateStr = proj.first_sale_date || '2026-06-01';
+      activities.push({
+        id: `activity-proj-${proj.id}`,
+        type: 'project',
+        date: dateStr,
+        title: `Property Registered: ${proj.project_name}`,
+        description: `New directory property listed in "${proj.location}", with configured land share value of ${(proj.land_share_amount).toLocaleString()} BDT.`,
+        metadata: 'Directory Registry',
+        timestamp: new Date(dateStr).getTime()
+      });
+    });
+
+    if (store.projectsOnSale) {
+      store.projectsOnSale.forEach(pos => {
+        const dateStr = pos.created_at ? pos.created_at.substring(0, 10) : '2026-06-01';
+        activities.push({
+          id: `activity-pos-${pos.id}`,
+          type: 'project',
+          date: dateStr,
+          title: `Campaign Registered: ${pos.project_name}`,
+          description: `New active campaign created linking project identifier "${pos.project_id}" to ${pos.total_units} catalog listings across ${pos.floor_number} floors.`,
+          metadata: `${pos.total_units} Units`,
+          timestamp: new Date(dateStr).getTime() + 5
+        });
+      });
+    }
+
+    // Sort by timestamp descending
+    const sortedActivities = activities
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 20); // Keep top 20 recent records
+
     res.json({
       cards: {
         totalSales: totalSalesCount,
@@ -417,7 +516,8 @@ async function startServer() {
         teams: teamIncentiveChartList
       },
       execAchievements: execAchievementRates,
-      execAchievementsPeriod: periodName
+      execAchievementsPeriod: periodName,
+      timelineActivities: sortedActivities
     });
   });
 
@@ -1611,7 +1711,8 @@ async function startServer() {
       sale_number: 1, // Will be computed chronologically in recalculation
       sale_date,
       executive_id,
-      project_on_sale_id
+      project_on_sale_id,
+      buyer_name: req.body.buyer_name ? String(req.body.buyer_name).trim() : undefined
     };
 
     store.sales.push(newSale);

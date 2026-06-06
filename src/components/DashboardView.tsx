@@ -26,6 +26,7 @@ export default function DashboardView({ authToken }: DashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'sale' | 'milestone' | 'project'>('all');
 
   useEffect(() => {
     fetch('/api/dashboard/analytics', {
@@ -267,9 +268,149 @@ export default function DashboardView({ authToken }: DashboardProps) {
             })}
           </div>
           <div className="flex items-center gap-4 text-xs font-medium justify-center pb-2">
-            <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400"><div className="w-3 h-3 bg-indigo-505 bg-indigo-500 rounded-xs" /> Sales Vol</span>
+            <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400"><div className="w-3 h-3 bg-indigo-505 bg-indigo-505 bg-indigo-500 rounded-xs" /> Sales Vol</span>
             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-xs" /> Incentives Paid</span>
           </div>
+        </div>
+
+        {/* Chronological Activity Timeline Component */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Activity className="w-5 h-5 text-indigo-600" /> Operational Activity Feed
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Audited stream of chronological sales reservations, performance achievements, and property listings.
+              </p>
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex flex-wrap gap-1.5 p-1 bg-gray-50 dark:bg-slate-850 rounded-xl border border-gray-100 dark:border-slate-800 w-fit">
+              <button
+                type="button"
+                onClick={() => setTimelineFilter('all')}
+                className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  timelineFilter === 'all'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs'
+                    : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'
+                }`}
+              >
+                All Events ({data.timelineActivities?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimelineFilter('sale')}
+                className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  timelineFilter === 'sale'
+                    ? 'bg-indigo-55 bg-indigo-600 text-white shadow-3xs'
+                    : 'text-gray-500 hover:text-indigo-600 dark:text-indigo-400'
+                }`}
+              >
+                Sales Bookings
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimelineFilter('milestone')}
+                className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  timelineFilter === 'milestone'
+                    ? 'bg-amber-500 text-white shadow-3xs'
+                    : 'text-gray-500 hover:text-amber-500'
+                }`}
+              >
+                Milestones
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimelineFilter('project')}
+                className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  timelineFilter === 'project'
+                    ? 'bg-emerald-600 text-white shadow-3xs'
+                    : 'text-gray-500 hover:text-emerald-500'
+                }`}
+              >
+                Assets
+              </button>
+            </div>
+          </div>
+
+          {(() => {
+            const unfilteredActivities = data.timelineActivities || [];
+            const filteredActivities = unfilteredActivities.filter((act: any) => {
+              if (timelineFilter === 'all') return true;
+              return act.type === timelineFilter;
+            });
+
+            if (filteredActivities.length === 0) {
+              return (
+                <div className="text-center py-12 border border-dashed border-gray-150 dark:border-slate-800 rounded-2xl">
+                  <Activity className="w-8 h-8 text-gray-300 mx-auto mb-2 animate-pulse" />
+                  <p className="text-xs font-semibold text-gray-400 dark:text-slate-500">No activities match your chosen categories in this view.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="relative border-l border-indigo-100/60 dark:border-slate-800 ml-4 sm:ml-6 pl-6 sm:pl-8 space-y-6">
+                {filteredActivities.map((act: any, idx: number) => {
+                  // Style configurations
+                  let iconElement = <TrendingUp className="w-4 h-4" />;
+                  let badgeColor = "bg-indigo-50 border-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:border-indigo-900/40 dark:text-indigo-400";
+                  let dotColor = "border-indigo-500 bg-white dark:bg-slate-900";
+
+                  if (act.type === 'milestone') {
+                    iconElement = <Crown className="w-4 h-4" />;
+                    badgeColor = "bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-amber-400";
+                    dotColor = "border-amber-500 bg-white dark:bg-slate-900";
+                  } else if (act.type === 'project') {
+                    iconElement = <Building2 className="w-4 h-4" />;
+                    badgeColor = "bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/40 dark:text-emerald-450";
+                    dotColor = "border-emerald-500 bg-white dark:bg-slate-900";
+                  }
+
+                  return (
+                    <div key={act.id} className="relative group animate-fade-in text-xs">
+                      {/* Timeline Dot Indicator */}
+                      <span className={`absolute -left-[31px] sm:-left-[39px] top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 ${dotColor} z-10 transition-transform duration-300 group-hover:scale-130`} />
+
+                      {/* Card layout */}
+                      <div className="bg-gray-50/30 hover:bg-white dark:bg-slate-900/50 dark:hover:bg-slate-850/30 p-4 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-3xs hover:shadow-2xs transition-all duration-300">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded-md font-extrabold uppercase text-[8.5px] border tracking-wider flex items-center gap-1 shrink-0 ${badgeColor}`}>
+                                {iconElement}
+                                {act.type === 'sale' ? 'Sale booking' : act.type === 'milestone' ? 'Milestone' : 'Asset Registry'}
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-mono font-bold shrink-0">
+                                📅 {new Date(act.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+
+                            <h4 className="font-extrabold text-sm text-gray-900 dark:text-white group-hover:text-indigo-600 transition duration-200 mt-2">
+                              {act.title}
+                            </h4>
+                            <p className="text-gray-550 dark:text-slate-400 leading-relaxed font-sans mt-1">
+                              {act.description}
+                            </p>
+                          </div>
+
+                          {/* Float right dynamic value badge if premium is logged */}
+                          {act.metadata && (
+                            <div className="shrink-0 text-right">
+                              <span className="inline-block bg-indigo-50/50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-100/40 dark:border-slate-700 px-2.5 py-1 rounded-xl text-xs font-mono font-bold whitespace-nowrap shadow-3xs">
+                                {act.metadata}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Project Wise Sales Distribution Section (Fully Redesigned Tabular Interactive Board) */}
