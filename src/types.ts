@@ -84,7 +84,7 @@ export interface Sale {
   unit_name: string;
   unit_measure: string;
   floor_number: number;
-  sale_number: number; // order of sale for this project
+  sale_number: number; // chronological order of sale for the executive in this project
   sale_date: string;
   executive_id: string;
   project_on_sale_id?: string;

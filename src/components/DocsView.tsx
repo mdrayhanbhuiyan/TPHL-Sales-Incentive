@@ -275,7 +275,7 @@ CREATE TABLE TeamProjects (
   unit_name VARCHAR(50) NOT NULL,
   unit_measure INT NOT NULL,
   floor_number INT NOT NULL,
-  sale_number INT NOT NULL,  -- sequence within project
+  sale_number INT NOT NULL,  -- sequence per individual executive per project
   sale_date DATE NOT NULL,
   executive_id VARCHAR(50) NOT NULL,
   FOREIGN KEY (project_id) REFERENCES Projects(id),
