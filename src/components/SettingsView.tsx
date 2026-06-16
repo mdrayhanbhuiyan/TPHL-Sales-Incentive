@@ -226,8 +226,17 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Server restore transaction failed");
+        let errorMsg = "Server restore transaction failed";
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (e) {
+          try {
+            const txt = await res.text();
+            if (txt) errorMsg = txt.slice(0, 150);
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
       }
 
       setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
@@ -405,8 +414,17 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Server restore transaction failed");
+        let errorMsg = "Server restore transaction failed";
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (e) {
+          try {
+            const txt = await res.text();
+            if (txt) errorMsg = txt.slice(0, 150);
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
       }
 
       setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);

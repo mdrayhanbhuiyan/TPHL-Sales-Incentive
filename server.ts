@@ -15,7 +15,8 @@ import {
   recalculateAllIncentives,
   recalculateAllIncentivesDirect,
   initFirestore,
-  getLiveFirestoreBackup
+  getLiveFirestoreBackup,
+  DatabaseStore
 } from './src/server/db';
 import { 
   User, 
@@ -1938,31 +1939,57 @@ export async function startServer() {
 
   // Database Restore (Upload/Import)
   app.post('/api/system/restore', authenticateToken, (req, res) => {
-    const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Requires Admin authentication" });
-      return;
+    try {
+      const user = (req as any).user;
+      if (user.role !== 'Admin') {
+        res.status(403).json({ error: "Requires Admin authentication" });
+        return;
+      }
+
+      const backupData = req.body;
+      if (!backupData || typeof backupData !== 'object') {
+        res.status(400).json({ error: "Invalid backup dataset format provided." });
+        return;
+      }
+
+      // Basic structure verification
+      if (!backupData.projects || !backupData.salesExecutives || !backupData.salesTeams) {
+        res.status(400).json({ error: "Verification failed. Essential relational schemas missing." });
+        return;
+      }
+
+      // Sanitize backupData to ensure all collections conform to DatabaseStore structure
+      const sanitizedStore: DatabaseStore = {
+        users: Array.isArray(backupData.users) ? backupData.users : [],
+        projects: Array.isArray(backupData.projects) ? backupData.projects : [],
+        salesTeams: Array.isArray(backupData.salesTeams) ? backupData.salesTeams : [],
+        teamProjects: Array.isArray(backupData.teamProjects) ? backupData.teamProjects : [],
+        salesExecutives: Array.isArray(backupData.salesExecutives) ? backupData.salesExecutives : [],
+        incentiveRules: Array.isArray(backupData.incentiveRules) ? backupData.incentiveRules : [],
+        bonusRules: backupData.bonusRules && typeof backupData.bonusRules === 'object' ? backupData.bonusRules : {
+          target_90_bonus: 2000,
+          target_100_bonus: 3500,
+          team_target_bonus: 5000
+        },
+        sales: Array.isArray(backupData.sales) ? backupData.sales : [],
+        salesIncentives: Array.isArray(backupData.salesIncentives) ? backupData.salesIncentives : [],
+        auditLogs: Array.isArray(backupData.auditLogs) ? backupData.auditLogs : [],
+        notifications: Array.isArray(backupData.notifications) ? backupData.notifications : [],
+        projectsOnSale: Array.isArray(backupData.projectsOnSale) ? backupData.projectsOnSale : [],
+        unitRegistrations: Array.isArray(backupData.unitRegistrations) ? backupData.unitRegistrations : []
+      };
+
+      writeStore(sanitizedStore);
+      recalculateAllIncentives(); // Rebind & calculate on recovery upload
+
+      logAction(user, "Database Restore", "Successfully uploaded and restored database state snapshot files.");
+      addNotification("Database Standard Restore Successful", "The database state files have been replaced and recalculated from backup.", 'success');
+
+      res.json({ success: true, message: "Database state restored successfully." });
+    } catch (err: any) {
+      console.error("[server.ts] Database restore failed:", err);
+      res.status(500).json({ error: err.message || "An unexpected error occurred during database restore." });
     }
-
-    const backupData = req.body;
-    if (!backupData || typeof backupData !== 'object') {
-      res.status(400).json({ error: "Invalid backup dataset format provided." });
-      return;
-    }
-
-    // Basic structure verification
-    if (!backupData.projects || !backupData.salesExecutives || !backupData.salesTeams) {
-      res.status(400).json({ error: "Verification failed. Essential relational schemas missing." });
-      return;
-    }
-
-    writeStore(backupData);
-    recalculateAllIncentives(); // Rebind & calculate on recovery upload
-
-    logAction(user, "Database Restore", "Successfully uploaded and restored database state snapshot files.");
-    addNotification("Database Standard Restore Successful", "The database state files have been replaced and recalculated from backup.", 'success');
-
-    res.json({ success: true, message: "Database state restored successfully." });
   });
 
   // --- HTML CLIENT INFRASTRUCTURE ---
