@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, doc, setDoc, getDocs, collection } from 'firebase/firestore';
+import { initializeFirestore, doc, setDoc, getDocs, collection, writeBatch } from 'firebase/firestore';
 
 import { 
   User, 
@@ -260,14 +260,15 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
       ];
 
       const sanitizedStore = removeUndefined(storeToSave);
+      const batch = writeBatch(db);
 
-      const writePromises = keys.map(key => {
+      for (const key of keys) {
         const docRef = doc(db, 'sales_portal_data', key);
-        return setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
-      });
+        batch.set(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
+      }
 
-      await Promise.all(writePromises);
-      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore in parallel!");
+      await batch.commit();
+      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore in a single atomic batch!");
     } catch (err) {
       console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
       handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');

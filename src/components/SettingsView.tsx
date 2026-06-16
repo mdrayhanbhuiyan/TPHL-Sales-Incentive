@@ -606,7 +606,18 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             body: csvFileContent
           });
 
-          const data = await res.json();
+          let data: any = {};
+          try {
+            const textResponse = await res.text();
+            try {
+              data = JSON.parse(textResponse);
+            } catch {
+              data = { error: textResponse || `HTTP Error ${res.status}` };
+            }
+          } catch {
+            data = { error: `Network/Server Communication Failure (Status ${res.status})` };
+          }
+
           if (!res.ok) throw new Error(data.error || "Server CSV restore transaction failed.");
 
           toast.success("Database restored successfully from CSV tables snapshot!");
