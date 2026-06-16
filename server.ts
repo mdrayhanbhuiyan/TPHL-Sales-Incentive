@@ -17,7 +17,7 @@ import {
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
   DatabaseStore
-} from './src/server/db';
+} from './src/server/db.js';
 import { 
   User, 
   Project, 
