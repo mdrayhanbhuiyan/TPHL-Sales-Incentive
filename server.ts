@@ -28,18 +28,19 @@ import {
 } from './src/types';
 
 export function getSaleVolume(sale: any, store: DatabaseStore): number {
-  const proj = store.projects.find(p => p.id === sale.project_id);
-  let saleVolume = proj ? proj.land_share_amount : 0;
-  if (sale.project_on_sale_id && store.projectsOnSale) {
-    const pos = store.projectsOnSale.find(p => p.id === sale.project_on_sale_id);
+  if (!sale || typeof sale !== 'object' || !store || !Array.isArray(store.projects)) return 0;
+  const proj = store.projects.find(p => p && p.id === sale.project_id);
+  let saleVolume = proj ? (Number(proj.land_share_amount) || 0) : 0;
+  if (sale.project_on_sale_id && Array.isArray(store.projectsOnSale)) {
+    const pos = store.projectsOnSale.find(p => p && p.id === sale.project_on_sale_id);
     if (pos) {
       if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
-        saleVolume = pos.land_share_price;
+        saleVolume = Number(pos.land_share_price) || 0;
       }
       if (pos.unit_configs) {
         const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
-        if (letter && pos.unit_configs[letter] !== undefined) {
-          saleVolume = pos.unit_configs[letter].land_share;
+        if (letter && pos.unit_configs[letter] !== undefined && pos.unit_configs[letter] !== null) {
+          saleVolume = Number(pos.unit_configs[letter].land_share) || 0;
         }
       }
     }

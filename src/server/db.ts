@@ -422,8 +422,11 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
   store.incentiveRules = Array.isArray(store.incentiveRules) ? store.incentiveRules.filter(r => r && typeof r === 'object') : [];
   store.projectsOnSale = Array.isArray(store.projectsOnSale) ? store.projectsOnSale.filter(p => p && typeof p === 'object') : [];
   store.unitRegistrations = Array.isArray(store.unitRegistrations) ? store.unitRegistrations.filter(r => r && typeof r === 'object') : [];
+  store.teamProjects = Array.isArray(store.teamProjects) ? store.teamProjects.filter(tp => tp && typeof tp === 'object') : [];
+  store.users = Array.isArray(store.users) ? store.users.filter(u => u && typeof u === 'object') : [];
+  store.auditLogs = Array.isArray(store.auditLogs) ? store.auditLogs.filter(a => a && typeof a === 'object') : [];
+  store.notifications = Array.isArray(store.notifications) ? store.notifications.filter(n => n && typeof n === 'object') : [];
 
-  // Clear previous incentives
   const rawSales = [...store.sales];
   
   // Sort sales of each executive per project chronologically to assign accurate chronological Sale Numbers per executive per project
@@ -451,9 +454,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
   // Assemble into state
   store.sales = rawSales;
 
-  const resolvedIncentives: SalesIncentive[] = [];
-
-  // Helper helper to resolve the exact calculation date and registration state for a sale
+  // Helper to resolve the exact calculation date and registration state for a sale
   const getSaleCalculationDate = (s: Sale): { dateStr: string; isRegistered: boolean } => {
     const proj = store.projects.find(p => p.id === s.project_id);
     if (!proj) {
@@ -471,32 +472,56 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     return { dateStr, isRegistered };
   };
 
-  // Group sales by month/year and executive to compute target bonuses
-  // Also group sales by month/year and team
-  const execSalesGroup: Record<string, { totalVolume: number; sales: Sale[] }> = {};
-  const teamSalesVolumeGroup: Record<string, number> = {}; // key: group_team_month_year, value: sum bdt
-
-  rawSales.forEach(sale => {
-    // Find Executive
-    const exec = store.salesExecutives.find(e => e.id === sale.executive_id || e.employee_id === sale.executive_id);
-    if (!exec) return;
-
-    // Project
-    const proj = store.projects.find(p => p.id === sale.project_id);
-    if (!proj) return;
-
-    // Use getSaleCalculationDate helper
-    const calc = getSaleCalculationDate(sale);
-
-    // Skip counting in monthly targets if flat/project is not registered
-    if (!calc.isRegistered) return;
-
+  // 1. Precalculate date/registration details for EVERY sale once to keep the algorithm O(N log N)
+  const saleCalcMap = new Map<string, { dateStr: string; isRegistered: boolean; month: number; year: number }>();
+  rawSales.forEach(s => {
+    const calc = getSaleCalculationDate(s);
     let pDate = new Date(calc.dateStr);
     if (Number.isNaN(pDate.getTime())) {
       pDate = new Date();
     }
     const month = pDate.getMonth() + 1;
     const year = pDate.getFullYear();
+    saleCalcMap.set(s.id, {
+      dateStr: calc.dateStr,
+      isRegistered: calc.isRegistered,
+      month,
+      year
+    });
+  });
+
+  // Helper to get time value of a sale
+  const getSaleTime = (saleId: string) => {
+    const calc = saleCalcMap.get(saleId);
+    if (!calc || !calc.dateStr) return 0;
+    const t = new Date(calc.dateStr).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  };
+
+  // Group sales by month/year and executive to compute target bonuses
+  // Also group sales by month/year and team
+  const execSalesGroup: Record<string, { totalVolume: number; sales: Sale[] }> = {};
+  const teamSalesVolumeGroup: Record<string, number> = {}; // key: team_month_year, value: count
+
+  // Pre-grouped monthly lists of active registered sales per executive and per team
+  const execMonthlySales: Record<string, Sale[]> = {};
+  const teamMonthlySales: Record<string, Sale[]> = {};
+
+  rawSales.forEach(sale => {
+    const exec = store.salesExecutives.find(e => e.id === sale.executive_id || e.employee_id === sale.executive_id);
+    if (!exec) return;
+
+    const proj = store.projects.find(p => p.id === sale.project_id);
+    if (!proj) return;
+
+    const calc = saleCalcMap.get(sale.id);
+    if (!calc) return;
+
+    // Skip counting in monthly targets if flat/project is not registered
+    if (!calc.isRegistered) return;
+
+    const month = calc.month;
+    const year = calc.year;
 
     // Use either explicit target or project share
     let saleVolume = Number(proj.land_share_amount) || 0;
@@ -515,38 +540,64 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       }
     }
 
-    const key = `${exec.id}_${month}_${year}`;
-    if (!execSalesGroup[key]) {
-      execSalesGroup[key] = { totalVolume: 0, sales: [] };
+    const execKey = `${exec.id}_${month}_${year}`;
+    if (!execSalesGroup[execKey]) {
+      execSalesGroup[execKey] = { totalVolume: 0, sales: [] };
     }
-    execSalesGroup[key].totalVolume += saleVolume;
-    execSalesGroup[key].sales.push(sale);
+    execSalesGroup[execKey].totalVolume += saleVolume;
+    execSalesGroup[execKey].sales.push(sale);
 
-    // Add to Team Grouping (counting flats/units instead of volume sum)
+    if (!execMonthlySales[execKey]) {
+      execMonthlySales[execKey] = [];
+    }
+    execMonthlySales[execKey].push(sale);
+
     if (exec.team_id) {
       const teamKey = `${exec.team_id}_${month}_${year}`;
       teamSalesVolumeGroup[teamKey] = (teamSalesVolumeGroup[teamKey] || 0) + 1;
+
+      if (!teamMonthlySales[teamKey]) {
+        teamMonthlySales[teamKey] = [];
+      }
+      teamMonthlySales[teamKey].push(sale);
     }
   });
 
+  // For O(1) checks, establish which sale ID is the absolute first registered sale of the month for that exec or team
+  const firstSaleOfExecMonthMap = new Map<string, string>(); // execKey -> saleId
+  const firstSaleOfTeamMonthMap = new Map<string, string>(); // teamKey -> saleId
+
+  Object.keys(execMonthlySales).forEach(execKey => {
+    const list = execMonthlySales[execKey];
+    list.sort((a, b) => getSaleTime(a.id) - getSaleTime(b.id));
+    if (list[0]) {
+      firstSaleOfExecMonthMap.set(execKey, list[0].id);
+    }
+  });
+
+  Object.keys(teamMonthlySales).forEach(teamKey => {
+    const list = teamMonthlySales[teamKey];
+    list.sort((a, b) => getSaleTime(a.id) - getSaleTime(b.id));
+    if (list[0]) {
+      firstSaleOfTeamMonthMap.set(teamKey, list[0].id);
+    }
+  });
+
+  const resolvedIncentives: SalesIncentive[] = [];
+
   // Calculate incentive for every sale
   rawSales.forEach(sale => {
-    // Resolve Executive
     const exec = store.salesExecutives.find(e => e.id === sale.executive_id || e.employee_id === sale.executive_id);
     if (!exec) return;
 
-    // Project
     const proj = store.projects.find(p => p.id === sale.project_id);
     if (!proj) return;
 
-    // Resolve calculation date details
-    const calc = getSaleCalculationDate(sale);
-    let pDate = new Date(calc.dateStr);
-    if (Number.isNaN(pDate.getTime())) {
-      pDate = new Date();
-    }
-    const month = pDate.getMonth() + 1;
-    const year = pDate.getFullYear();
+    const calc = saleCalcMap.get(sale.id);
+    if (!calc) return;
+
+    const month = calc.month;
+    const year = calc.year;
     const isRegistered = calc.isRegistered;
 
     // Resolve sold unit size and project on sale details first
@@ -648,31 +699,21 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
     // Target Bonus (distributed on the first sale of the month):
     const execKey = `${exec.id}_${month}_${year}`;
-    const monthlyExecStats = execSalesGroup[execKey];
     
     let targetBonus = 0;
-    if (isRegistered && monthlyExecStats) {
+    if (isRegistered && firstSaleOfExecMonthMap.get(execKey) === sale.id) {
       // Find monthly target for executive, default to exec.target
       const monthStr = `${year}-${String(month).padStart(2, '0')}`;
       const execTarget = (exec.monthly_targets && exec.monthly_targets[monthStr] !== undefined) 
         ? exec.monthly_targets[monthStr] 
         : exec.target;
 
-      // Evaluate based on flat count instead of BDT volume sum
-      const achievementRate = execTarget > 0 ? (monthlyExecStats.sales.length / execTarget) * 100 : 0;
-      const sortedMonthSales = [...monthlyExecStats.sales].sort((a,b) => {
-        const calcA = getSaleCalculationDate(a);
-        const calcB = getSaleCalculationDate(b);
-        const timeA = calcA.dateStr ? new Date(calcA.dateStr).getTime() : 0;
-        const timeB = calcB.dateStr ? new Date(calcB.dateStr).getTime() : 0;
-        return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
-      });
-      if (sortedMonthSales[0] && sortedMonthSales[0].id === sale.id) {
-        if (achievementRate >= 100) {
-          targetBonus = Number(store.bonusRules?.target_100_bonus) || 3500;
-        } else if (achievementRate >= 90) {
-          targetBonus = Number(store.bonusRules?.target_90_bonus) || 2000;
-        }
+      const salesInMonth = execSalesGroup[execKey]?.sales?.length || 0;
+      const achievementRate = execTarget > 0 ? (salesInMonth / execTarget) * 100 : 0;
+      if (achievementRate >= 100) {
+        targetBonus = Number(store.bonusRules?.target_100_bonus) || 3500;
+      } else if (achievementRate >= 90) {
+        targetBonus = Number(store.bonusRules?.target_90_bonus) || 2000;
       }
     }
 
@@ -680,36 +721,17 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     let teamBonus = 0;
     if (isRegistered && exec.team_id) {
       const teamKey = `${exec.team_id}_${month}_${year}`;
-      const teamVolume = teamSalesVolumeGroup[teamKey] || 0;
-      const salesTeam = store.salesTeams.find(t => t.id === exec.team_id);
-      if (salesTeam) {
-        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
-        const teamTarget = (salesTeam.monthly_targets && salesTeam.monthly_targets[monthStr] !== undefined)
-          ? salesTeam.monthly_targets[monthStr]
-          : salesTeam.sales_target;
+      if (firstSaleOfTeamMonthMap.get(teamKey) === sale.id) {
+        const teamVolume = teamSalesVolumeGroup[teamKey] || 0;
+        const salesTeam = store.salesTeams.find(t => t.id === exec.team_id);
+        if (salesTeam) {
+          const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+          const teamTarget = (salesTeam.monthly_targets && salesTeam.monthly_targets[monthStr] !== undefined)
+            ? salesTeam.monthly_targets[monthStr]
+            : salesTeam.sales_target;
 
-        const teamAchievementRate = teamTarget > 0 ? (teamVolume / teamTarget) * 100 : 0;
-        if (teamAchievementRate >= 100) {
-          const teamExecsIds = store.salesExecutives.filter(e => e.team_id === exec.team_id).map(e => e.id);
-          const teamMonthSales = store.sales.filter(s => {
-            const sCalc = getSaleCalculationDate(s);
-            if (!sCalc.isRegistered) return false;
-            let sDate = new Date(sCalc.dateStr);
-            if (Number.isNaN(sDate.getTime())) {
-              sDate = new Date();
-            }
-            return (sDate.getMonth() + 1 === month) && 
-                   (sDate.getFullYear() === year) && 
-                   teamExecsIds.includes(s.executive_id);
-          }).sort((a, b) => {
-            const calcA = getSaleCalculationDate(a);
-            const calcB = getSaleCalculationDate(b);
-            const timeA = calcA.dateStr ? new Date(calcA.dateStr).getTime() : 0;
-            const timeB = calcB.dateStr ? new Date(calcB.dateStr).getTime() : 0;
-            return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
-          });
-
-          if (teamMonthSales[0] && teamMonthSales[0].id === sale.id) {
+          const teamAchievementRate = teamTarget > 0 ? (teamVolume / teamTarget) * 100 : 0;
+          if (teamAchievementRate >= 100) {
             teamBonus = Number(store.bonusRules?.team_target_bonus) || 5000;
           }
         }
