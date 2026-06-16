@@ -107,6 +107,20 @@ const DEFAULT_STORE: DatabaseStore = {
   ]
 };
 
+// Universal UUID generator with fallback
+export function generateUUID(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch (err) {}
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // Global in-memory cache for fast synchronous access
 let cachedStore: DatabaseStore | null = null;
 let db: any = null;
@@ -214,10 +228,61 @@ function removeUndefined(obj: any): any {
   return obj;
 }
 
-// Global state to throttle/serialize concurrent Firestore write operations and prevent locks/contention
-let isWritingToFirestore = false;
-let pendingStoreToWrite: DatabaseStore | null = null;
-let currentWritePromise: Promise<void> | null = null;
+// Sequential write task queue to process Firestore writes one-by-one safely without collisions or crashes
+interface WriteTask {
+  store: DatabaseStore;
+  resolve: () => void;
+  reject: (err: any) => void;
+}
+
+const writeTasks: WriteTask[] = [];
+let isProcessingQueue = false;
+
+async function processWriteQueue(): Promise<void> {
+  if (isProcessingQueue || writeTasks.length === 0) return;
+  isProcessingQueue = true;
+
+  while (writeTasks.length > 0) {
+    const task = writeTasks[0];
+    try {
+      if (db) {
+        const keys: (keyof DatabaseStore)[] = [
+          'users',
+          'projects',
+          'salesTeams',
+          'teamProjects',
+          'salesExecutives',
+          'incentiveRules',
+          'bonusRules',
+          'sales',
+          'salesIncentives',
+          'auditLogs',
+          'notifications',
+          'projectsOnSale',
+          'unitRegistrations'
+        ];
+
+        const sanitizedStore = removeUndefined(task.store);
+        const batch = writeBatch(db);
+
+        for (const key of keys) {
+          const docRef = doc(db, 'sales_portal_data', key);
+          batch.set(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
+        }
+
+        await batch.commit();
+        console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
+      }
+      task.resolve();
+    } catch (err: any) {
+      console.error("[db.ts] Failed to save state to Firebase Firestore inside queue:", err);
+      task.reject(err);
+    }
+    writeTasks.shift(); // Remove the completed task
+  }
+
+  isProcessingQueue = false;
+}
 
 // Firestore Direct Write helper
 async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
@@ -232,65 +297,12 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
 
   if (!db) return;
 
-  // If a write is currently in progress, save the new store state as "pending"
-  // and return the current running promise, so caller can wait for completion.
-  if (isWritingToFirestore) {
-    pendingStoreToWrite = store;
-    return currentWritePromise || Promise.resolve();
-  }
-
-  isWritingToFirestore = true;
-  
-  const executeWrite = async (storeToSave: DatabaseStore): Promise<void> => {
-    try {
-      const keys: (keyof DatabaseStore)[] = [
-        'users',
-        'projects',
-        'salesTeams',
-        'teamProjects',
-        'salesExecutives',
-        'incentiveRules',
-        'bonusRules',
-        'sales',
-        'salesIncentives',
-        'auditLogs',
-        'notifications',
-        'projectsOnSale',
-        'unitRegistrations'
-      ];
-
-      const sanitizedStore = removeUndefined(storeToSave);
-      const batch = writeBatch(db);
-
-      for (const key of keys) {
-        const docRef = doc(db, 'sales_portal_data', key);
-        batch.set(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
-      }
-
-      await batch.commit();
-      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore in a single atomic batch!");
-    } catch (err) {
-      console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
-      handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');
-    }
-  };
-
-  currentWritePromise = (async () => {
-    try {
-      await executeWrite(store);
-    } finally {
-      isWritingToFirestore = false;
-      currentWritePromise = null;
-      if (pendingStoreToWrite) {
-        const nextStore = pendingStoreToWrite;
-        pendingStoreToWrite = null;
-        // Trigger the next write sequentially
-        await writeStoreToFirestore(nextStore);
-      }
-    }
-  })();
-
-  return currentWritePromise;
+  return new Promise<void>((resolve, reject) => {
+    writeTasks.push({ store, resolve, reject });
+    processWriteQueue().catch(queueErr => {
+      console.error("[db.ts] Critical write queue processing failure:", queueErr);
+    });
+  });
 }
 
 // Asynchronously bootstrap the Firestore state at server boot-up
@@ -400,21 +412,25 @@ export function getStore(): DatabaseStore {
   return cachedStore;
 }
 
-// Synchronously update cache, and trigger direct async/awaited Firestore save
+// Synchronously update cache, and trigger direct async/awaited Firestore save with back-propagating promise and safely managed globally caught rejection to prevent unhandled rejections
 export function writeStore(store: DatabaseStore): Promise<void> {
   cachedStore = store;
   
-  return writeStoreToFirestore(store).catch(err => {
-    console.error("[db.ts] Direct save to Firestore failed:", err);
-    throw err;
+  const promise = writeStoreToFirestore(store);
+  
+  // Attach a silent catch to prevent unhandled rejection crashes when not awaited
+  promise.catch(err => {
+    console.warn("[db.ts] Safe background promise catch caught a Firestore write failure:", err ? (err.message || err) : "Unknown Firestore write error");
   });
+
+  return promise;
 }
 
 // Log actions
 export function logAction(user: { id: string; name: string; role: string } | null, action: string, details: string): void {
   const store = getStore();
   const log: AuditLog = {
-    id: `log-${crypto.randomUUID()}`,
+    id: `log-${generateUUID()}`,
     user_id: user ? user.id : 'system',
     username: user ? user.name : 'System Scheduler',
     role: user ? user.role : 'System',
@@ -434,7 +450,7 @@ export function logAction(user: { id: string; name: string; role: string } | nul
 export function addNotification(title: string, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
   const store = getStore();
   const notif: AppNotification = {
-    id: `notif-${crypto.randomUUID()}`,
+    id: `notif-${generateUUID()}`,
     title,
     message,
     type,
@@ -494,11 +510,14 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
   // Helper to resolve the exact calculation date and registration state for a sale
   const getSaleCalculationDate = (s: Sale): { dateStr: string; isRegistered: boolean } => {
-    const proj = store.projects.find(p => p.id === s.project_id);
+    const proj = store.projects.find(p => String(p.id) === String(s.project_id));
     if (!proj) {
       return { dateStr: s.sale_date, isRegistered: false };
     }
-    const unitReg = store.unitRegistrations?.find(r => r.project_on_sale_id === s.project_on_sale_id && r.unit_name === s.unit_name);
+    const unitReg = store.unitRegistrations?.find(r => 
+      String(r.project_on_sale_id) === String(s.project_on_sale_id) && 
+      String(r.unit_name).trim().toLowerCase() === String(s.unit_name).trim().toLowerCase()
+    );
     const isRegistered = unitReg ? (unitReg.registered === 'Yes') : false;
 
     let dateStr = s.sale_date;
@@ -546,10 +565,10 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
   const teamMonthlySales: Record<string, Sale[]> = {};
 
   rawSales.forEach(sale => {
-    const exec = store.salesExecutives.find(e => e.id === sale.executive_id || e.employee_id === sale.executive_id);
+    const exec = store.salesExecutives.find(e => String(e.id) === String(sale.executive_id) || String(e.employee_id) === String(sale.executive_id));
     if (!exec) return;
 
-    const proj = store.projects.find(p => p.id === sale.project_id);
+    const proj = store.projects.find(p => String(p.id) === String(sale.project_id));
     if (!proj) return;
 
     const calc = saleCalcMap.get(sale.id);
@@ -564,7 +583,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     // Use either explicit target or project share
     let saleVolume = Number(proj.land_share_amount) || 0;
     if (sale.project_on_sale_id && store.projectsOnSale) {
-      const pos = store.projectsOnSale.find(p => p.id === sale.project_on_sale_id);
+      const pos = store.projectsOnSale.find(p => String(p.id) === String(sale.project_on_sale_id));
       if (pos) {
         if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
           saleVolume = Number(pos.land_share_price) || 0;
@@ -625,10 +644,10 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
   // Calculate incentive for every sale
   rawSales.forEach(sale => {
-    const exec = store.salesExecutives.find(e => e.id === sale.executive_id || e.employee_id === sale.executive_id);
+    const exec = store.salesExecutives.find(e => String(e.id) === String(sale.executive_id) || String(e.employee_id) === String(sale.executive_id));
     if (!exec) return;
 
-    const proj = store.projects.find(p => p.id === sale.project_id);
+    const proj = store.projects.find(p => String(p.id) === String(sale.project_id));
     if (!proj) return;
 
     const calc = saleCalcMap.get(sale.id);
@@ -641,7 +660,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     // Resolve sold unit size and project on sale details first
     let soldUnitSizeStr = sale.unit_measure || "";
     let soldUnitSizeNum = parseInt(soldUnitSizeStr) || 0;
-    const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => p.id === sale.project_on_sale_id) : null;
+    const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => String(p.id) === String(sale.project_on_sale_id)) : null;
     if (pos) {
       if (pos.unit_configs) {
         const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
@@ -679,7 +698,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
     if (!rule) {
       rule = {
-        id: `rule-${crypto.randomUUID()}`,
+        id: `rule-${generateUUID()}`,
         project_id: sale.project_id,
         sale_1_percent: 1.5,
         sale_2_percent: 1.8,
@@ -761,7 +780,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       const teamKey = `${exec.team_id}_${month}_${year}`;
       if (firstSaleOfTeamMonthMap.get(teamKey) === sale.id) {
         const teamVolume = teamSalesVolumeGroup[teamKey] || 0;
-        const salesTeam = store.salesTeams.find(t => t.id === exec.team_id);
+        const salesTeam = store.salesTeams.find(t => String(t.id) === String(exec.team_id));
         if (salesTeam) {
           const monthStr = `${year}-${String(month).padStart(2, '0')}`;
           const teamTarget = (salesTeam.monthly_targets && salesTeam.monthly_targets[monthStr] !== undefined)
@@ -779,7 +798,7 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     const totalIncentive = baseIncentive + floorBonus + targetBonus + teamBonus;
 
     resolvedIncentives.push({
-      id: `inc-${crypto.randomUUID()}`,
+      id: `inc-${generateUUID()}`,
       sale_id: sale.id,
       executive_id: exec.id,
       project_id: sale.project_id,
