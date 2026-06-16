@@ -261,11 +261,13 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
 
       const sanitizedStore = removeUndefined(storeToSave);
 
-      for (const key of keys) {
+      const writePromises = keys.map(key => {
         const docRef = doc(db, 'sales_portal_data', key);
-        await setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
-      }
-      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
+        return setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
+      });
+
+      await Promise.all(writePromises);
+      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore in parallel!");
     } catch (err) {
       console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
       handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');
