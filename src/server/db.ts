@@ -214,6 +214,11 @@ function removeUndefined(obj: any): any {
   return obj;
 }
 
+// Global state to throttle/serialize concurrent Firestore write operations and prevent locks/contention
+let isWritingToFirestore = false;
+let pendingStoreToWrite: DatabaseStore | null = null;
+let currentWritePromise: Promise<void> | null = null;
+
 // Firestore Direct Write helper
 async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
   // Always keep local db-store.json synchronized so offline backups are updated instantly
@@ -226,34 +231,63 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
   }
 
   if (!db) return;
-  try {
-    const keys: (keyof DatabaseStore)[] = [
-      'users',
-      'projects',
-      'salesTeams',
-      'teamProjects',
-      'salesExecutives',
-      'incentiveRules',
-      'bonusRules',
-      'sales',
-      'salesIncentives',
-      'auditLogs',
-      'notifications',
-      'projectsOnSale',
-      'unitRegistrations'
-    ];
 
-    const sanitizedStore = removeUndefined(store);
-
-    for (const key of keys) {
-      const docRef = doc(db, 'sales_portal_data', key);
-      await setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
-    }
-    console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
-  } catch (err) {
-    console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
-    handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');
+  // If a write is currently in progress, save the new store state as "pending"
+  // and return the current running promise, so caller can wait for completion.
+  if (isWritingToFirestore) {
+    pendingStoreToWrite = store;
+    return currentWritePromise || Promise.resolve();
   }
+
+  isWritingToFirestore = true;
+  
+  const executeWrite = async (storeToSave: DatabaseStore): Promise<void> => {
+    try {
+      const keys: (keyof DatabaseStore)[] = [
+        'users',
+        'projects',
+        'salesTeams',
+        'teamProjects',
+        'salesExecutives',
+        'incentiveRules',
+        'bonusRules',
+        'sales',
+        'salesIncentives',
+        'auditLogs',
+        'notifications',
+        'projectsOnSale',
+        'unitRegistrations'
+      ];
+
+      const sanitizedStore = removeUndefined(storeToSave);
+
+      for (const key of keys) {
+        const docRef = doc(db, 'sales_portal_data', key);
+        await setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
+      }
+      console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
+    } catch (err) {
+      console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
+      handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');
+    }
+  };
+
+  currentWritePromise = (async () => {
+    try {
+      await executeWrite(store);
+    } finally {
+      isWritingToFirestore = false;
+      currentWritePromise = null;
+      if (pendingStoreToWrite) {
+        const nextStore = pendingStoreToWrite;
+        pendingStoreToWrite = null;
+        // Trigger the next write sequentially
+        await writeStoreToFirestore(nextStore);
+      }
+    }
+  })();
+
+  return currentWritePromise;
 }
 
 // Asynchronously bootstrap the Firestore state at server boot-up
@@ -364,11 +398,12 @@ export function getStore(): DatabaseStore {
 }
 
 // Synchronously update cache, and trigger direct async/awaited Firestore save
-export function writeStore(store: DatabaseStore): void {
+export function writeStore(store: DatabaseStore): Promise<void> {
   cachedStore = store;
   
-  writeStoreToFirestore(store).catch(err => {
+  return writeStoreToFirestore(store).catch(err => {
     console.error("[db.ts] Direct save to Firestore failed:", err);
+    throw err;
   });
 }
 

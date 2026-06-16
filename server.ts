@@ -2086,7 +2086,7 @@ export async function startServer() {
   });
 
   // Database Restore (Upload/Import)
-  app.post('/api/system/restore', authenticateToken, (req, res) => {
+  app.post('/api/system/restore', authenticateToken, async (req, res) => {
     try {
       const user = (req as any).user;
       if (user.role !== 'Admin') {
@@ -2127,11 +2127,40 @@ export async function startServer() {
         unitRegistrations: Array.isArray(backupData.unitRegistrations) ? backupData.unitRegistrations.filter((x: any) => x && typeof x === 'object') : []
       };
 
-      writeStore(sanitizedStore);
-      recalculateAllIncentives(); // Rebind & calculate on recovery upload
+      // Process everything in-memory to consolidate database write cycles defensively
+      recalculateAllIncentivesDirect(sanitizedStore);
 
-      logAction(user, "Database Restore", "Successfully uploaded and restored database state snapshot files.");
-      addNotification("Database Standard Restore Successful", "The database state files have been replaced and recalculated from backup.", 'success');
+      // Append audit log record in-memory
+      const auditLog = {
+        id: `log-${crypto.randomUUID()}`,
+        user_id: user ? user.id : 'system',
+        username: user ? user.name : 'System Scheduler',
+        role: user ? user.role : 'System',
+        action: "Database Restore",
+        details: "Successfully uploaded and restored database state snapshot files.",
+        timestamp: new Date().toISOString()
+      };
+      sanitizedStore.auditLogs.unshift(auditLog);
+      if (sanitizedStore.auditLogs.length > 500) {
+        sanitizedStore.auditLogs = sanitizedStore.auditLogs.slice(0, 500);
+      }
+
+      // Append notification record in-memory
+      const notif = {
+        id: `notif-${crypto.randomUUID()}`,
+        title: "Database Standard Restore Successful",
+        message: "The database state files have been replaced and recalculated from backup.",
+        type: "success" as const,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      sanitizedStore.notifications.unshift(notif);
+      if (sanitizedStore.notifications.length > 50) {
+        sanitizedStore.notifications = sanitizedStore.notifications.slice(0, 50);
+      }
+
+      // Persist the consolidated database state to Firestore exactly once, and await it
+      await writeStore(sanitizedStore);
 
       res.json({ success: true, message: "Database state restored successfully." });
     } catch (err: any) {
@@ -2219,7 +2248,7 @@ export async function startServer() {
   });
 
   // Consolidated Multi-Table CSV Restore Import
-  app.post('/api/system/restore-csv', authenticateToken, express.text({ limit: '15mb' }), (req, res) => {
+  app.post('/api/system/restore-csv', authenticateToken, express.text({ limit: '15mb' }), async (req, res) => {
     const user = (req as any).user;
     if (user.role !== 'Admin') {
       res.status(403).json({ error: "Requires Admin authentication" });
@@ -2360,11 +2389,40 @@ export async function startServer() {
         unitRegistrations: Array.isArray(parsedStore.unitRegistrations) ? parsedStore.unitRegistrations : []
       };
 
-      writeStore(sanitized);
-      recalculateAllIncentives();
+      // Process everything in-memory to consolidate database write cycles defensively
+      recalculateAllIncentivesDirect(sanitized);
 
-      logAction(user, "Database CSV Import", `Successfully restored all tables from CSV snapshot backing files.`);
-      addNotification("CSV Catalog Snapshot Imported", "Portal state successfully populated and active commissions recalculated.", "success");
+      // Append audit log record in-memory
+      const auditLog = {
+        id: `log-${crypto.randomUUID()}`,
+        user_id: user ? user.id : 'system',
+        username: user ? user.name : 'System Scheduler',
+        role: user ? user.role : 'System',
+        action: "Database CSV Import",
+        details: `Successfully restored all tables from CSV snapshot backing files.`,
+        timestamp: new Date().toISOString()
+      };
+      sanitized.auditLogs.unshift(auditLog);
+      if (sanitized.auditLogs.length > 500) {
+        sanitized.auditLogs = sanitized.auditLogs.slice(0, 500);
+      }
+
+      // Append notification record in-memory
+      const notif = {
+        id: `notif-${crypto.randomUUID()}`,
+        title: "CSV Catalog Snapshot Imported",
+        message: "Portal state successfully populated and active commissions recalculated.",
+        type: "success" as const,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      sanitized.notifications.unshift(notif);
+      if (sanitized.notifications.length > 50) {
+        sanitized.notifications = sanitized.notifications.slice(0, 50);
+      }
+
+      // Persist the consolidated database state to Firestore exactly once, and await it
+      await writeStore(sanitized);
 
       res.json({ success: true, count: Object.keys(sanitized).reduce((sum, key) => sum + (Array.isArray((sanitized as any)[key]) ? (sanitized as any)[key].length : 1), 0) });
     } catch (err: any) {
