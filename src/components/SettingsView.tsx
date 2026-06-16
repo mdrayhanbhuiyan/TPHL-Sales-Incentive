@@ -501,40 +501,51 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         throw new Error("Uploaded CSV file is empty.");
       }
 
-      const lines = text.split(/\r?\n/);
+      const parts = text.split(/#\s*TABLE:\s*/i);
       const tablesFound: { [key: string]: number } = {};
-      let currentTable: string | null = null;
-      let inQuotes = false;
-      let rowCount = 0;
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim().startsWith('# TABLE:') && !inQuotes) {
-          if (currentTable && rowCount > 0) {
-            tablesFound[currentTable] = rowCount;
+      if (parts.length <= 1) {
+        throw new Error("Invalid CSV format! No tables detected. Make sure the file was exported using the platform's CSV export feature.");
+      }
+
+      for (let i = 1; i < parts.length; i++) {
+        const part = parts[i];
+        const lines = part.split(/\r?\n/);
+        if (lines.length === 0) continue;
+
+        const tableName = lines[0].trim();
+        if (!tableName) continue;
+
+        let rowCount = 0;
+        let accumulator = '';
+        let inQuotes = false;
+
+        // Count logical lines (accumulate multi-line strings due to quotes)
+        for (let j = 2; j < lines.length; j++) {
+          const line = lines[j];
+          if (!line.trim() && !accumulator) continue;
+
+          for (const c of line) {
+            if (c === '"') inQuotes = !inQuotes;
           }
-          const tableName = line.replace('# TABLE:', '').trim();
-          currentTable = tableName;
-          rowCount = -1; // next line is headers list
-          continue;
-        }
 
-        for (const c of line) {
-          if (c === '"') inQuotes = !inQuotes;
-        }
-
-        if (inQuotes) continue;
-
-        if (currentTable) {
+          if (inQuotes) continue;
           rowCount++;
         }
-      }
-      if (currentTable && rowCount > 0) {
-        tablesFound[currentTable] = rowCount;
+
+        tablesFound[tableName] = rowCount;
       }
 
-      if (Object.keys(tablesFound).length === 0 || (!tablesFound.projects && !tablesFound.salesExecutives)) {
-        throw new Error("Validation failed! The file does not appear to contain valid TPHL tables (e.g. 'projects' or 'salesExecutives'). Please verify it is a valid CSV database backup.");
+      const expectedTables = [
+        'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives', 
+        'incentiveRules', 'sales', 'salesIncentives', 'auditLogs', 
+        'notifications', 'projectsOnSale', 'unitRegistrations', 'bonusRules'
+      ];
+
+      const foundKnownTables = Object.keys(tablesFound).filter(t => expectedTables.includes(t));
+
+      if (foundKnownTables.length === 0) {
+        throw new Error("Validation failed! The file does not contain any known database tables (e.g., 'projects', 'users', 'sales'). Please verify it is a valid TPHL CSV database backup.");
       }
 
       setCsvFileName(filename);

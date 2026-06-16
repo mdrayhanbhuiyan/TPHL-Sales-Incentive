@@ -2278,78 +2278,64 @@ export async function startServer() {
         projectsOnSale: [], unitRegistrations: []
       };
 
-      const lines = csvContent.split(/\r?\n/);
-      let currentGroup: { table: string; headers: string[]; rows: string[][] } | null = null;
-      const groups: typeof currentGroup[] = [];
-      let accumulator = '';
-      let inQuotes = false;
+      const tableParts = csvContent.split(/(?:\r?\n|^)# TABLE:\s*/i);
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim().startsWith('# TABLE:') && !inQuotes) {
-          if (currentGroup) groups.push(currentGroup);
-          const tableName = line.replace('# TABLE:', '').trim();
-          currentGroup = { table: tableName, headers: [], rows: [] };
-          continue;
-        }
+      for (let i = 1; i < tableParts.length; i++) {
+        const part = tableParts[i];
+        if (!part.trim()) continue;
 
-        if (!currentGroup) continue;
+        const lines = part.split(/\r?\n/);
+        const tableName = lines[0].trim();
+        if (!tableName) continue;
 
-        if (accumulator) {
-          accumulator += '\n' + line;
-        } else {
-          accumulator = line;
-        }
+        const headersLine = lines[1];
+        if (!headersLine) continue;
 
-        for (const c of line) {
-          if (c === '"') inQuotes = !inQuotes;
-        }
+        const headers = parseCSVLine(headersLine).map(h => h.trim());
+        const rows: any[] = [];
 
-        if (inQuotes) continue;
+        // Now parse rows inside this part
+        let accumulator = '';
+        let inQuotes = false;
 
-        const parsedRow = parseCSVLine(accumulator);
-        accumulator = '';
-
-        if (currentGroup.headers.length === 0) {
-          currentGroup.headers = parsedRow.map(h => h.trim());
-        } else {
-          if (parsedRow.length > 0 && parsedRow.some(cell => cell.trim() !== '')) {
-            currentGroup.rows.push(parsedRow);
+        for (let j = 2; j < lines.length; j++) {
+          const line = lines[j];
+          if (accumulator) {
+            accumulator += '\n' + line;
+          } else {
+            accumulator = line;
           }
-        }
-      }
-      if (currentGroup) groups.push(currentGroup);
 
-      for (const group of groups) {
-        const { table, headers, rows } = group;
-        if (table === 'bonusRules') {
-          if (rows.length > 0) {
-            const row = rows[0];
-            const rules: any = {};
+          for (const c of line) {
+            if (c === '"') inQuotes = !inQuotes;
+          }
+
+          if (inQuotes) continue;
+
+          const parsedRow = parseCSVLine(accumulator);
+          accumulator = '';
+
+          if (parsedRow.length > 0 && parsedRow.some(cell => cell.trim() !== '')) {
+            const obj: any = {};
             headers.forEach((h, idx) => {
-              if (row[idx] !== undefined) {
-                rules[h] = decodeCell(row[idx]);
+              if (parsedRow[idx] !== undefined) {
+                const val = parsedRow[idx];
+                if (val !== '') {
+                  obj[h] = decodeCell(val);
+                }
               }
             });
-            parsedStore.bonusRules = rules;
+            rows.push(obj);
           }
-          continue;
         }
 
-        const list: any[] = [];
-        for (const row of rows) {
-          const obj: any = {};
-          headers.forEach((h, idx) => {
-            if (row[idx] !== undefined) {
-              const val = row[idx];
-              if (val !== '') {
-                obj[h] = decodeCell(val);
-              }
-            }
-          });
-          list.push(obj);
+        if (tableName === 'bonusRules') {
+          if (rows.length > 0) {
+            parsedStore.bonusRules = rows[0];
+          }
+        } else {
+          parsedStore[tableName] = rows;
         }
-        parsedStore[table] = list;
       }
 
       // Quick essential validations
