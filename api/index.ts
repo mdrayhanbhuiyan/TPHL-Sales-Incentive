@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { startServer } from '../server';
+import { startServer } from '../server.js';
 
 let cachedApp: any = null;
 
