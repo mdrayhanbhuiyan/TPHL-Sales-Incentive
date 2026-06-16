@@ -93,6 +93,33 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     onConfirm: () => {}
   });
 
+  // Live Firebase/Firestore Connection Diagnostics states
+  const [diagResults, setDiagResults] = useState<any | null>(null);
+  const [diagLoading, setDiagLoading] = useState<boolean>(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    setDiagError(null);
+    try {
+      const res = await fetch('/api/system/firebase-diagnostics', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to query server connection diagnostics.");
+      }
+      const data = await res.json();
+      setDiagResults(data);
+      toast.success("Firebase diagnostics completed successfully!");
+    } catch (err: any) {
+      console.error(err);
+      setDiagError(err.message || "An unexpected error occurred during database health check.");
+      toast.error("Diagnostics check failed.");
+    } finally {
+      setDiagLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -342,10 +369,17 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     try {
       const parsed = JSON.parse(jsonText);
       
-      // Essential structural verification check
-      if (!parsed.projects || !parsed.salesExecutives || !parsed.salesTeams) {
-        throw new Error("Missing essential relational structures like 'projects', 'salesExecutives', or 'salesTeams'. Please verify that this is a valid TPHL Master Backup JSON.");
+      // Robust structural verification checking for valid key signatures
+      const knownKeys = ['users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives', 'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs', 'notifications', 'projectsOnSale', 'unitRegistrations'];
+      const hasKnownKeys = knownKeys.some(key => parsed && (parsed as any)[key] !== undefined);
+      if (!hasKnownKeys) {
+        throw new Error("Invalid TPHL Master Backup! The file does not contain any recognizable database tables.");
       }
+
+      // Auto-initialize empty properties defensively
+      if (!Array.isArray(parsed.projects)) parsed.projects = [];
+      if (!Array.isArray(parsed.salesExecutives)) parsed.salesExecutives = [];
+      if (!Array.isArray(parsed.salesTeams)) parsed.salesTeams = [];
 
       const projectsCount = Array.isArray(parsed.projects) ? parsed.projects.length : 0;
       const executivesCount = Array.isArray(parsed.salesExecutives) ? parsed.salesExecutives.length : 0;
@@ -885,6 +919,179 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           </div>
         ) : (
           <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+        )}
+      </div>
+
+      {/* Firebase & Firestore Connection Diagnostics Panel */}
+      <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-100 pb-5">
+          <div className="flex items-center gap-3">
+            <Database className="w-6 h-6 text-indigo-600 shrink-0" />
+            <div>
+              <h2 className="text-sm font-bold text-gray-800 font-sans tracking-tight">Firebase &amp; Firestore Connection Diagnostics</h2>
+              <p className="text-[11px] text-gray-400 font-medium leading-relaxed">
+                Analyze live cloud database communication metrics and detect environment key mismatches or unauthorized domain blocks.
+              </p>
+            </div>
+          </div>
+          {userRole === 'Admin' ? (
+            <button
+              onClick={runDiagnostics}
+              disabled={diagLoading}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer shrink-0"
+            >
+              <RefreshCw className={`w-4 h-4 ${diagLoading ? 'animate-spin' : ''}`} />
+              {diagLoading ? "Diagnosing..." : "Run Connectivity Check"}
+            </button>
+          ) : (
+            <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+          )}
+        </div>
+
+        {diagError && (
+          <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl text-xs font-semibold text-rose-800 flex items-start gap-2">
+            <ShieldAlert className="w-4.5 h-4.5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Diagnostics Execution Failure</p>
+              <p className="font-normal mt-0.5 text-rose-700">{diagError}</p>
+            </div>
+          </div>
+        )}
+
+        {diagResults ? (
+          <div className="space-y-6">
+            {/* Live Read Result */}
+            <div className="p-4 rounded-2xl border border-gray-100/80 bg-gray-50/30">
+              <h3 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">Cloud Connectivity Result</h3>
+              <div className="flex items-start gap-3">
+                {diagResults.connectionTest.status === 'success' ? (
+                  <div className="p-2 bg-emerald-50 rounded-xl shrink-0">
+                    <CheckCircle className="w-6 h-6 text-emerald-600" />
+                  </div>
+                ) : (
+                  <div className="p-2 bg-rose-50 rounded-xl shrink-0">
+                    <ShieldAlert className="w-6 h-6 text-rose-600" />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                      diagResults.connectionTest.status === 'success' 
+                        ? 'bg-emerald-100 text-emerald-800' 
+                        : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {diagResults.connectionTest.status}
+                    </span>
+                    <span className="text-[11px] text-gray-400 font-mono">Query: read sales_portal_data/projects</span>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-800">
+                    {diagResults.connectionTest.status === 'success' 
+                      ? diagResults.connectionTest.message 
+                      : `Query failed: ${diagResults.connectionTest.error}`}
+                  </p>
+                  {diagResults.connectionTest.status !== 'success' && (
+                    <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed max-w-2xl bg-white border border-gray-100 rounded-xl p-3">
+                      <strong className="text-rose-700">💡 Troubleshooting raw query failure:</strong> Ensure that your security rules are correctly deployed and allow reads from this path, your database region is matching, and network/service configuration holds no active blocks.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Config & Environment Mappings */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Configuration Status Info */}
+              <div className="space-y-3.5 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs">
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Server Firebase Configurations</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500 font-medium">Config File Path (Local)</span>
+                    <span className={`font-semibold px-2 py-0.5 rounded-sm ${
+                      diagResults.firebaseConfigPathExists ? 'bg-emerald-50 text-emerald-700 text-[10px]' : 'bg-rose-50 text-rose-700 text-[10px]'
+                    }`}>
+                      {diagResults.firebaseConfigPathExists ? 'Detected on system' : 'Missing'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500 font-medium">Config Loaded Source</span>
+                    <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px]">
+                      {diagResults.loadedFrom}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500 font-medium">Project ID</span>
+                    <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.projectId}>
+                      {diagResults.projectId || 'N/A'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500 font-medium">Firestore Database ID</span>
+                    <span className="font-mono text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.firestoreDatabaseId}>
+                      {diagResults.firestoreDatabaseId || 'N/A'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500 font-medium">Authentication Domain</span>
+                    <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.authDomain}>
+                      {diagResults.authDomain || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vercel Environment variables Mapping */}
+              <div className="space-y-3.5 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs">
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Vercel Environment Keys Mapped</h4>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin">
+                  {Object.entries(diagResults.envVars).map(([key, isPresent]) => {
+                    const cleanKey = key.replace('_present', '');
+                    return (
+                      <div key={key} className="flex justify-between items-center text-xs border-b border-gray-50 pb-1.5 last:border-0 last:pb-0">
+                        <span className="font-mono text-[10px] text-gray-500 selection:bg-indigo-50">{cleanKey}</span>
+                        <span className={`text-[10px] font-bold flex items-center gap-1 ${isPresent ? 'text-emerald-600' : 'text-gray-400 font-normal'}`}>
+                          {isPresent ? 'Mapped ✅' : 'Not set ⚠️'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Vercel Unauthorized-Domain Warn Guide */}
+            <div className="bg-amber-50/60 border border-amber-200/50 rounded-2xl p-5 space-y-3.5">
+              <div className="flex items-center gap-2 text-amber-800 font-semibold">
+                <HelpCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <h3 className="text-xs font-bold leading-none">Solving 'unauthorized-domain' Errors on Vercel Deployments</h3>
+              </div>
+              <div className="text-xs text-amber-800 leading-relaxed font-semibold space-y-2.5 text-left">
+                <p>
+                  When your application is hosted on <strong>Vercel</strong> under your private subdomain or custom domains, Firebase Authentication will reject login popup hooks and return an <code>auth/unauthorized-domain</code> error if the domain is not allowlisted in Google.
+                </p>
+                <div className="bg-white/80 rounded-xl p-3 border border-amber-200/40 space-y-1.5">
+                  <p className="font-bold text-amber-900">Follow these exact instructions to authorize Vercel domains:</p>
+                  <ol className="list-decimal pl-4 space-y-1 text-amber-800 leading-relaxed">
+                    <li>Copy your Vercel deployment URL (e.g. <code>tphl-incentives.vercel.app</code>). Ensure you omit the protocol (<code>https://</code>).</li>
+                    <li>Go to the <a href={`https://console.firebase.google.com/project/${diagResults.projectId || 'your-project-id'}/authentication/settings`} target="_blank" rel="noopener noreferrer" className="underline font-bold text-indigo-700 hover:text-indigo-800">Firebase Console Settings</a> (Authentication &gt; Settings &gt; Authorized domains).</li>
+                    <li>Click <strong>Add domain</strong> and paste your Vercel URL.</li>
+                    <li>Save changes. Authorized domains sync within 60 seconds of updating.</li>
+                  </ol>
+                </div>
+                <p className="text-[11px] text-amber-700 italic font-medium">
+                  Note: Always ensure the environment variable names (such as <code>FIREBASE_API_KEY</code>, <code>FIREBASE_PROJECT_ID</code>, <code>FIREBASE_AUTH_DOMAIN</code> etc.) configured in your Vercel dash match local definitions precisely!
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="border border-dashed border-gray-200 rounded-2xl py-12 text-center text-xs text-gray-400 font-medium flex flex-col items-center justify-center space-y-2">
+            <Database className="w-8 h-8 text-gray-300" />
+            <p>No diagnostics ran yet. Click "Run Connectivity Check" to test Firestore communication logs.</p>
+          </div>
         )}
       </div>
 

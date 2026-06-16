@@ -15,6 +15,7 @@ import {
   recalculateAllIncentivesDirect,
   initFirestore,
   getLiveFirestoreBackup,
+  getFirebaseDiagnostics,
   DatabaseStore
 } from './src/server/db';
 import { 
@@ -2127,6 +2128,22 @@ export async function startServer() {
     res.json(store.auditLogs);
   });
 
+  // Live Firebase/Firestore Connection Diagnostics Check
+  app.get('/api/system/firebase-diagnostics', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const diagnostics = await getFirebaseDiagnostics();
+      res.json(diagnostics);
+    } catch (err: any) {
+      console.error("[server.ts] Firebase diagnostics endpoint error:", err);
+      res.status(500).json({ error: "Failed to run Firebase connection diagnostics: " + err.message });
+    }
+  });
+
   app.get('/api/system/notifications', authenticateToken, (req, res) => {
     const store = getStore();
     res.json(store.notifications);
@@ -2183,11 +2200,18 @@ export async function startServer() {
         return;
       }
 
-      // Basic structure verification
-      if (!backupData.projects || !backupData.salesExecutives || !backupData.salesTeams) {
-        res.status(400).json({ error: "Verification failed. Essential relational schemas missing." });
+      // Robust structural verification checking for valid TPHL key signatures
+      const knownKeys = ['users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives', 'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs', 'notifications', 'projectsOnSale', 'unitRegistrations'];
+      const hasKnownKeys = knownKeys.some(key => backupData && (backupData as any)[key] !== undefined);
+      if (!hasKnownKeys) {
+        res.status(400).json({ error: "Verification failed. The uploaded file is not a valid TPHL backup database." });
         return;
       }
+
+      // Auto-initialize missing properties defensively to ensure perfect import compatibility
+      if (!Array.isArray(backupData.projects)) backupData.projects = [];
+      if (!Array.isArray(backupData.salesExecutives)) backupData.salesExecutives = [];
+      if (!Array.isArray(backupData.salesTeams)) backupData.salesTeams = [];
 
       // Sanitize backupData to ensure all collections conform to DatabaseStore structure and contain no null/undefined members
       const sanitizedStore: DatabaseStore = {
@@ -2401,7 +2425,11 @@ export async function startServer() {
         if (!tableName) continue;
 
         const headersLine = lines[1];
-        if (!headersLine) continue;
+        if (!headersLine || !headersLine.trim() || headersLine.startsWith('# TABLE:')) {
+          // If the table is empty, initialize it in memory rather than skipping, preventing validation error on restore
+          parsedStore[tableName] = [];
+          continue;
+        }
 
         const headers = parseCSVLine(headersLine).map(h => h.trim());
         const rows: any[] = [];
@@ -2450,11 +2478,18 @@ export async function startServer() {
         }
       }
 
-      // Quick essential validations
-      if (!parsedStore.projects || !parsedStore.salesExecutives || !parsedStore.salesTeams) {
-        res.status(400).json({ error: "Essential tables (projects, salesTeams, salesExecutives) are missing." });
+      // Robust structural validation for CSV tables map
+      const knownKeys = ['users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives', 'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs', 'notifications', 'projectsOnSale', 'unitRegistrations'];
+      const hasKnownKeys = knownKeys.some(key => parsedStore[key] !== undefined);
+      if (!hasKnownKeys) {
+        res.status(400).json({ error: "Validation failed. No recognizable database tables were successfully mapped from the CSV backup snapshot." });
         return;
       }
+
+      // Auto-initialize missing fields defensively to prevent database constraint failures
+      if (!Array.isArray(parsedStore.projects)) parsedStore.projects = [];
+      if (!Array.isArray(parsedStore.salesExecutives)) parsedStore.salesExecutives = [];
+      if (!Array.isArray(parsedStore.salesTeams)) parsedStore.salesTeams = [];
 
       const sanitized: DatabaseStore = {
         users: Array.isArray(parsedStore.users) ? parsedStore.users : [],

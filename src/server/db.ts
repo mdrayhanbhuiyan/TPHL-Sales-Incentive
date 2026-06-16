@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, doc, setDoc, getDocs, collection, writeBatch } from 'firebase/firestore';
+import { initializeFirestore, doc, setDoc, getDocs, getDoc, collection, writeBatch } from 'firebase/firestore';
 
 import { 
   User, 
@@ -874,4 +874,103 @@ export async function getLiveFirestoreBackup(): Promise<DatabaseStore> {
     console.error("[db.ts] Failed to fetch live backup from Firestore directly, falling back to local store:", err);
     return getStore();
   }
+}
+
+export async function getFirebaseDiagnostics(): Promise<any> {
+  const result: any = {
+    firebaseConfigPathExists: false,
+    firebaseConfigFound: false,
+    loadedFrom: 'none',
+    configKeysPresent: [],
+    projectId: null,
+    firestoreDatabaseId: null,
+    authDomain: null,
+    firestoreInitialized: false,
+    connectionTest: {
+      status: 'untested',
+      error: null,
+      message: null
+    },
+    envVars: {
+      FIREBASE_CONFIG_present: !!process.env.FIREBASE_CONFIG,
+      FIREBASE_API_KEY_present: !!process.env.FIREBASE_API_KEY,
+      VITE_FIREBASE_API_KEY_present: !!process.env.VITE_FIREBASE_API_KEY,
+      FIREBASE_PROJECT_ID_present: !!process.env.FIREBASE_PROJECT_ID,
+      VITE_FIREBASE_PROJECT_ID_present: !!process.env.VITE_FIREBASE_PROJECT_ID,
+      FIREBASE_AUTH_DOMAIN_present: !!process.env.FIREBASE_AUTH_DOMAIN,
+      VITE_FIREBASE_AUTH_DOMAIN_present: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
+      FIREBASE_FIRESTORE_DATABASE_ID_present: !!process.env.FIREBASE_FIRESTORE_DATABASE_ID,
+      VITE_FIREBASE_FIRESTORE_DATABASE_ID_present: !!process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+    }
+  };
+
+  try {
+    let config: any = null;
+    const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(firebaseConfigPath)) {
+      result.firebaseConfigPathExists = true;
+      try {
+        config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+        result.firebaseConfigFound = true;
+        result.loadedFrom = 'firebase-applet-config.json';
+      } catch (err: any) {
+        result.firebaseConfigError = "Fail to parse: " + err.message;
+      }
+    } else {
+      result.firebaseConfigPathExists = false;
+    }
+
+    if (!config && process.env.FIREBASE_CONFIG) {
+      try {
+        config = JSON.parse(process.env.FIREBASE_CONFIG);
+        result.firebaseConfigFound = true;
+        result.loadedFrom = 'FIREBASE_CONFIG_env';
+      } catch (e: any) {
+        result.firebaseConfigError = "FIREBASE_CONFIG env parse error: " + e.message;
+      }
+    }
+
+    if (!config && (process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY)) {
+      config = {
+        projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+        appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID,
+        apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
+        authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN,
+        firestoreDatabaseId: process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      };
+      result.firebaseConfigFound = true;
+      result.loadedFrom = 'individual_envs';
+    }
+
+    if (config) {
+      result.configKeysPresent = Object.keys(config);
+      result.projectId = config.projectId;
+      result.firestoreDatabaseId = config.firestoreDatabaseId || process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+      result.authDomain = config.authDomain;
+    }
+
+    if (db) {
+      result.firestoreInitialized = true;
+      try {
+        const testRef = doc(db, 'sales_portal_data', 'projects');
+        await getDoc(testRef);
+        result.connectionTest.status = 'success';
+        result.connectionTest.message = 'Successfully queried Firestore database: sales_portal_data/projects';
+      } catch (e: any) {
+        result.connectionTest.status = 'failed';
+        result.connectionTest.error = e.message || String(e);
+        result.connectionTest.code = e.code || 'unknown';
+      }
+    } else {
+      result.connectionTest.status = 'failed';
+      result.connectionTest.error = 'Firestore connection database instance (db) is null or uninitialized on the server.';
+    }
+
+  } catch (err: any) {
+    result.error = err.message || String(err);
+  }
+
+  return result;
 }
