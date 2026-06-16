@@ -195,8 +195,11 @@ try {
   console.error("[db.ts] Failed to initialize Firebase:", err);
 }
 
-// Helper to recursively remove all undefined properties from an object so Firestore doesn't reject them
+// Helper to recursively remove all undefined properties and convert NaN to 0 from an object so Firestore doesn't reject them
 function removeUndefined(obj: any): any {
+  if (typeof obj === 'number' && Number.isNaN(obj)) {
+    return 0;
+  }
   if (Array.isArray(obj)) {
     return obj.map(item => removeUndefined(item));
   } else if (obj !== null && typeof obj === 'object') {
@@ -488,22 +491,25 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     // Skip counting in monthly targets if flat/project is not registered
     if (!calc.isRegistered) return;
 
-    const pDate = new Date(calc.dateStr);
+    let pDate = new Date(calc.dateStr);
+    if (Number.isNaN(pDate.getTime())) {
+      pDate = new Date();
+    }
     const month = pDate.getMonth() + 1;
     const year = pDate.getFullYear();
 
     // Use either explicit target or project share
-    let saleVolume = proj.land_share_amount;
+    let saleVolume = Number(proj.land_share_amount) || 0;
     if (sale.project_on_sale_id && store.projectsOnSale) {
       const pos = store.projectsOnSale.find(p => p.id === sale.project_on_sale_id);
       if (pos) {
         if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
-          saleVolume = pos.land_share_price;
+          saleVolume = Number(pos.land_share_price) || 0;
         }
         if (pos.unit_configs) {
           const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
           if (letter && pos.unit_configs[letter] !== undefined) {
-            saleVolume = pos.unit_configs[letter].land_share;
+            saleVolume = Number(pos.unit_configs[letter].land_share) || 0;
           }
         }
       }
@@ -535,7 +541,10 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
     // Resolve calculation date details
     const calc = getSaleCalculationDate(sale);
-    const pDate = new Date(calc.dateStr);
+    let pDate = new Date(calc.dateStr);
+    if (Number.isNaN(pDate.getTime())) {
+      pDate = new Date();
+    }
     const month = pDate.getMonth() + 1;
     const year = pDate.getFullYear();
     const isRegistered = calc.isRegistered;
@@ -598,26 +607,26 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     }
 
     // Determine sequence percentage
-    let basePercent = rule.sale_7_percent; // default for 7+
+    let basePercent = Number(rule.sale_7_percent) || 0;
     const sNum = sale.sale_number;
-    if (sNum === 1) basePercent = rule.sale_1_percent;
-    else if (sNum === 2) basePercent = rule.sale_2_percent;
-    else if (sNum === 3) basePercent = rule.sale_3_percent;
-    else if (sNum === 4) basePercent = rule.sale_4_percent;
-    else if (sNum === 5) basePercent = rule.sale_5_percent;
-    else if (sNum === 6) basePercent = rule.sale_6_percent;
-    else if (sNum === 7) basePercent = rule.sale_7_percent;
+    if (sNum === 1) basePercent = Number(rule.sale_1_percent) || 0;
+    else if (sNum === 2) basePercent = Number(rule.sale_2_percent) || 0;
+    else if (sNum === 3) basePercent = Number(rule.sale_3_percent) || 0;
+    else if (sNum === 4) basePercent = Number(rule.sale_4_percent) || 0;
+    else if (sNum === 5) basePercent = Number(rule.sale_5_percent) || 0;
+    else if (sNum === 6) basePercent = Number(rule.sale_6_percent) || 0;
+    else if (sNum === 7) basePercent = Number(rule.sale_7_percent) || 0;
 
     // Resolve land share price of xyz (the project/unit on sale)
-    let currentLandShare = proj.land_share_amount;
+    let currentLandShare = Number(proj.land_share_amount) || 0;
     if (pos) {
       if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
-        currentLandShare = pos.land_share_price;
+        currentLandShare = Number(pos.land_share_price) || 0;
       }
       if (pos.unit_configs) {
         const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
         if (letter && pos.unit_configs[letter] !== undefined) {
-          currentLandShare = pos.unit_configs[letter].land_share;
+          currentLandShare = Number(pos.unit_configs[letter].land_share) || 0;
         }
       }
     }
@@ -631,9 +640,9 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       const totalFloors = pos ? pos.floor_number : proj.floors;
 
       if (sale.floor_number === 1) {
-        floorBonus = currentLandShare * (rule.first_floor_bonus_percent / 100);
+        floorBonus = currentLandShare * ((Number(rule.first_floor_bonus_percent) || 0) / 100);
       } else if (sale.floor_number === totalFloors) {
-        floorBonus = currentLandShare * (rule.top_floor_bonus_percent / 100);
+        floorBonus = currentLandShare * ((Number(rule.top_floor_bonus_percent) || 0) / 100);
       }
     }
 
@@ -654,13 +663,15 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       const sortedMonthSales = [...monthlyExecStats.sales].sort((a,b) => {
         const calcA = getSaleCalculationDate(a);
         const calcB = getSaleCalculationDate(b);
-        return new Date(calcA.dateStr).getTime() - new Date(calcB.dateStr).getTime();
+        const timeA = calcA.dateStr ? new Date(calcA.dateStr).getTime() : 0;
+        const timeB = calcB.dateStr ? new Date(calcB.dateStr).getTime() : 0;
+        return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
       });
       if (sortedMonthSales[0] && sortedMonthSales[0].id === sale.id) {
         if (achievementRate >= 100) {
-          targetBonus = store.bonusRules.target_100_bonus;
+          targetBonus = Number(store.bonusRules?.target_100_bonus) || 3500;
         } else if (achievementRate >= 90) {
-          targetBonus = store.bonusRules.target_90_bonus;
+          targetBonus = Number(store.bonusRules?.target_90_bonus) || 2000;
         }
       }
     }
@@ -683,18 +694,23 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
           const teamMonthSales = store.sales.filter(s => {
             const sCalc = getSaleCalculationDate(s);
             if (!sCalc.isRegistered) return false;
-            const sDate = new Date(sCalc.dateStr);
+            let sDate = new Date(sCalc.dateStr);
+            if (Number.isNaN(sDate.getTime())) {
+              sDate = new Date();
+            }
             return (sDate.getMonth() + 1 === month) && 
                    (sDate.getFullYear() === year) && 
                    teamExecsIds.includes(s.executive_id);
           }).sort((a, b) => {
             const calcA = getSaleCalculationDate(a);
             const calcB = getSaleCalculationDate(b);
-            return new Date(calcA.dateStr).getTime() - new Date(calcB.dateStr).getTime();
+            const timeA = calcA.dateStr ? new Date(calcA.dateStr).getTime() : 0;
+            const timeB = calcB.dateStr ? new Date(calcB.dateStr).getTime() : 0;
+            return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
           });
 
           if (teamMonthSales[0] && teamMonthSales[0].id === sale.id) {
-            teamBonus = store.bonusRules.team_target_bonus;
+            teamBonus = Number(store.bonusRules?.team_target_bonus) || 5000;
           }
         }
       }
