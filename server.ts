@@ -1789,6 +1789,137 @@ export async function startServer() {
     res.status(201).json(newSale);
   });
 
+  app.post('/api/sales/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "Missing or invalid items array for bulk import." });
+      return;
+    }
+
+    const store = getStore();
+    const importedSales = [];
+
+    for (const item of items) {
+      const { 
+        unit_name, 
+        sale_date, 
+        project_name, 
+        project_id, 
+        project_on_sale_name, 
+        campaign_name,
+        project_on_sale_id, 
+        executive_name, 
+        executive_id, 
+        employee_id, 
+        buyer_name,
+        unit_measure,
+        floor_number
+      } = item;
+
+      if (!unit_name || !sale_date) continue;
+
+      // 1. Resolve Executive
+      let exec = null;
+      if (executive_id) {
+        exec = store.salesExecutives.find(e => e.id === executive_id);
+      }
+      if (!exec && employee_id) {
+        exec = store.salesExecutives.find(e => String(e.employee_id).toLowerCase().trim() === String(employee_id).toLowerCase().trim());
+      }
+      if (!exec && executive_name) {
+        exec = store.salesExecutives.find(e => 
+          String(e.name).toLowerCase().trim() === String(executive_name).toLowerCase().trim() || 
+          String(e.employee_id).toLowerCase().trim() === String(executive_name).toLowerCase().trim()
+        );
+      }
+      if (!exec) continue; // Skip if executive cannot be resolved
+
+      // 2. Resolve Campaign (ProjectOnSale)
+      let campaign = null;
+      const cleanCampaignName = String(project_on_sale_name || campaign_name || "").toLowerCase().trim();
+      const cleanCampaignId = String(project_on_sale_id || "").trim();
+      
+      if (cleanCampaignId) {
+        campaign = store.projectsOnSale.find(pos => pos.id === cleanCampaignId);
+      }
+      if (!campaign && cleanCampaignName) {
+        campaign = store.projectsOnSale.find(pos => pos.project_name.toLowerCase().trim() === cleanCampaignName);
+      }
+
+      // 3. Resolve Master Project
+      let proj = null;
+      const cleanProjName = String(project_name || "").toLowerCase().trim();
+      const cleanProjId = String(project_id || "").trim();
+      if (cleanProjId) {
+        proj = store.projects.find(p => p.id === cleanProjId);
+      }
+      if (!proj && cleanProjName) {
+        proj = store.projects.find(p => p.project_name.toLowerCase().trim() === cleanProjName);
+      }
+      if (!proj && campaign) {
+        proj = store.projects.find(p => p.id === campaign.project_id);
+      }
+      if (!proj) {
+        if (exec.project_id) {
+          proj = store.projects.find(p => p.id === exec.project_id);
+        }
+        if (!proj && store.projects.length > 0) {
+          proj = store.projects[0];
+        }
+      }
+
+      if (!proj) continue; // Skip if no project is associated
+
+      // Calculate floor
+      let fNum = Number(floor_number);
+      if (isNaN(fNum) || !fNum) {
+        fNum = parseInt(unit_name) || 1;
+      }
+
+      // Calculate SFT measure
+      let measure = String(unit_measure || "");
+      if (!measure) {
+        if (campaign) {
+          const letter = String(unit_name || "").slice(-1).toUpperCase();
+          if (campaign.unit_configs && campaign.unit_configs[letter]) {
+            measure = `${campaign.unit_configs[letter].size} SFT`;
+          } else {
+            measure = campaign.flat_unit_size;
+          }
+        } else {
+          measure = proj.unit_measure || "1200 SFT";
+        }
+      }
+
+      const sid = `sale-${crypto.randomUUID().slice(0, 8)}`;
+      const newSale = {
+        id: sid,
+        project_id: proj.id,
+        project_on_sale_id: campaign ? campaign.id : undefined,
+        unit_name: String(unit_name).trim().toUpperCase(),
+        unit_measure: measure,
+        floor_number: fNum,
+        sale_number: 1,
+        sale_date: String(sale_date).trim(),
+        executive_id: exec.id,
+        buyer_name: buyer_name ? String(buyer_name).trim() : undefined
+      };
+
+      store.sales.push(newSale);
+      importedSales.push(newSale);
+    }
+
+    if (importedSales.length > 0) {
+      recalculateAllIncentivesDirect(store);
+      writeStore(store);
+      logAction(user, "Bulk Import Sales", `Successfully imported ${importedSales.length} sales booking records from CSV.`);
+      addNotification("Sales Bulk Import Successful", `Imported ${importedSales.length} bookings. Recalculated all incentive payout streams chronologically.`, 'success');
+    }
+
+    res.status(201).json({ count: importedSales.length, items: importedSales });
+  });
+
   app.put('/api/sales/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
     const store = getStore();
@@ -2006,6 +2137,253 @@ export async function startServer() {
     } catch (err: any) {
       console.error("[server.ts] Database restore failed:", err);
       res.status(500).json({ error: err.message || "An unexpected error occurred during database restore." });
+    }
+  });
+
+  // Consolidated Multi-Table CSV Backup Export
+  app.get('/api/system/backup-csv', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const store = getStore();
+
+      const escapeCSVField = (val: any): string => {
+        if (val === null || val === undefined) return '""';
+        if (typeof val === 'object') {
+          return '"' + JSON.stringify(val).replace(/"/g, '""').replace(/\n/g, '\\n') + '"';
+        }
+        const str = String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      };
+
+      const serializeCollection = (tableName: string, items: any[]): string => {
+        if (!items || items.length === 0) {
+          return `# TABLE: ${tableName}\n\n`;
+        }
+        // Extract all unique headers/keys from items
+        const headersSet = new Set<string>();
+        items.forEach(item => {
+          if (item && typeof item === 'object') {
+            Object.keys(item).forEach(k => headersSet.add(k));
+          }
+        });
+        const headers = Array.from(headersSet);
+        let csv = `# TABLE: ${tableName}\n`;
+        csv += headers.join(",") + "\n";
+        for (const item of items) {
+          if (!item) continue;
+          const row = headers.map(h => escapeCSVField(item[h]));
+          csv += row.join(",") + "\n";
+        }
+        csv += "\n";
+        return csv;
+      };
+
+      let csvOutput = "# TPHL PORTAL MULTI-TABLE DATABASE BAK/SNAPSHOT\n";
+      csvOutput += `# Date Generated: ${new Date().toISOString()}\n`;
+      csvOutput += `# Authorized Operator: ${user.name} (${user.email})\n\n`;
+
+      // Serialize arrays
+      const collectionKeys: (keyof DatabaseStore)[] = [
+        'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives', 
+        'incentiveRules', 'sales', 'salesIncentives', 'auditLogs', 
+        'notifications', 'projectsOnSale', 'unitRegistrations'
+      ];
+
+      for (const key of collectionKeys) {
+        const arr = (store[key] as any[]) || [];
+        csvOutput += serializeCollection(key, arr);
+      }
+
+      // Serialize bonusRules object
+      csvOutput += `# TABLE: bonusRules\n`;
+      csvOutput += "target_90_bonus,target_100_bonus,team_target_bonus\n";
+      const br = store.bonusRules || { target_90_bonus: 2000, target_100_bonus: 3500, team_target_bonus: 5000 };
+      csvOutput += `${escapeCSVField(br.target_90_bonus)},${escapeCSVField(br.target_100_bonus)},${escapeCSVField(br.team_target_bonus)}\n\n`;
+
+      logAction(user, "Database CSV Backup", "Downloaded a database state backup in CSV compound format.");
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="tphl_database_snapshot_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvOutput);
+    } catch (err: any) {
+      console.error("[server.ts] CSV Backup failed:", err);
+      res.status(500).json({ error: "Failed to compile database CSV snapshot: " + err.message });
+    }
+  });
+
+  // Consolidated Multi-Table CSV Restore Import
+  app.post('/api/system/restore-csv', authenticateToken, express.text({ limit: '15mb' }), (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const csvContent = req.body;
+      if (!csvContent || typeof csvContent !== 'string') {
+        res.status(400).json({ error: "No CSV content sent or invalid formatting." });
+        return;
+      }
+
+      const parseCSVLine = (line: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (c === ',' && !inQuotes) {
+            result.push(current);
+            current = '';
+          } else {
+            current += c;
+          }
+        }
+        result.push(current);
+        return result;
+      };
+
+      const decodeCell = (cell: string) => {
+        const t = cell.trim();
+        if (t === "") return undefined;
+        if (t.startsWith('{') && t.endsWith('}')) {
+          try { return JSON.parse(t); } catch (e) { return t; }
+        }
+        if (t.startsWith('[') && t.endsWith(']')) {
+          try { return JSON.parse(t); } catch (e) { return t; }
+        }
+        if (t === 'true') return true;
+        if (t === 'false') return false;
+        if (!isNaN(Number(t))) return Number(t);
+        return cell;
+      };
+
+      const parsedStore: any = {
+        users: [], projects: [], salesTeams: [], teamProjects: [], salesExecutives: [],
+        incentiveRules: [], bonusRules: { target_90_bonus: 2000, target_100_bonus: 3500, team_target_bonus: 5000 },
+        sales: [], salesIncentives: [], auditLogs: [], notifications: [],
+        projectsOnSale: [], unitRegistrations: []
+      };
+
+      const lines = csvContent.split(/\r?\n/);
+      let currentGroup: { table: string; headers: string[]; rows: string[][] } | null = null;
+      const groups: typeof currentGroup[] = [];
+      let accumulator = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith('# TABLE:') && !inQuotes) {
+          if (currentGroup) groups.push(currentGroup);
+          const tableName = line.replace('# TABLE:', '').trim();
+          currentGroup = { table: tableName, headers: [], rows: [] };
+          continue;
+        }
+
+        if (!currentGroup) continue;
+
+        if (accumulator) {
+          accumulator += '\n' + line;
+        } else {
+          accumulator = line;
+        }
+
+        for (const c of line) {
+          if (c === '"') inQuotes = !inQuotes;
+        }
+
+        if (inQuotes) continue;
+
+        const parsedRow = parseCSVLine(accumulator);
+        accumulator = '';
+
+        if (currentGroup.headers.length === 0) {
+          currentGroup.headers = parsedRow.map(h => h.trim());
+        } else {
+          if (parsedRow.length > 0 && parsedRow.some(cell => cell.trim() !== '')) {
+            currentGroup.rows.push(parsedRow);
+          }
+        }
+      }
+      if (currentGroup) groups.push(currentGroup);
+
+      for (const group of groups) {
+        const { table, headers, rows } = group;
+        if (table === 'bonusRules') {
+          if (rows.length > 0) {
+            const row = rows[0];
+            const rules: any = {};
+            headers.forEach((h, idx) => {
+              if (row[idx] !== undefined) {
+                rules[h] = decodeCell(row[idx]);
+              }
+            });
+            parsedStore.bonusRules = rules;
+          }
+          continue;
+        }
+
+        const list: any[] = [];
+        for (const row of rows) {
+          const obj: any = {};
+          headers.forEach((h, idx) => {
+            if (row[idx] !== undefined) {
+              const val = row[idx];
+              if (val !== '') {
+                obj[h] = decodeCell(val);
+              }
+            }
+          });
+          list.push(obj);
+        }
+        parsedStore[table] = list;
+      }
+
+      // Quick essential validations
+      if (!parsedStore.projects || !parsedStore.salesExecutives || !parsedStore.salesTeams) {
+        res.status(400).json({ error: "Essential tables (projects, salesTeams, salesExecutives) are missing." });
+        return;
+      }
+
+      const sanitized: DatabaseStore = {
+        users: Array.isArray(parsedStore.users) ? parsedStore.users : [],
+        projects: Array.isArray(parsedStore.projects) ? parsedStore.projects : [],
+        salesTeams: Array.isArray(parsedStore.salesTeams) ? parsedStore.salesTeams : [],
+        teamProjects: Array.isArray(parsedStore.teamProjects) ? parsedStore.teamProjects : [],
+        salesExecutives: Array.isArray(parsedStore.salesExecutives) ? parsedStore.salesExecutives : [],
+        incentiveRules: Array.isArray(parsedStore.incentiveRules) ? parsedStore.incentiveRules : [],
+        bonusRules: parsedStore.bonusRules || { target_90_bonus: 2000, target_100_bonus: 3500, team_target_bonus: 5000 },
+        sales: Array.isArray(parsedStore.sales) ? parsedStore.sales : [],
+        salesIncentives: Array.isArray(parsedStore.salesIncentives) ? parsedStore.salesIncentives : [],
+        auditLogs: Array.isArray(parsedStore.auditLogs) ? parsedStore.auditLogs : [],
+        notifications: Array.isArray(parsedStore.notifications) ? parsedStore.notifications : [],
+        projectsOnSale: Array.isArray(parsedStore.projectsOnSale) ? parsedStore.projectsOnSale : [],
+        unitRegistrations: Array.isArray(parsedStore.unitRegistrations) ? parsedStore.unitRegistrations : []
+      };
+
+      writeStore(sanitized);
+      recalculateAllIncentives();
+
+      logAction(user, "Database CSV Import", `Successfully restored all tables from CSV snapshot backing files.`);
+      addNotification("CSV Catalog Snapshot Imported", "Portal state successfully populated and active commissions recalculated.", "success");
+
+      res.json({ success: true, count: Object.keys(sanitized).reduce((sum, key) => sum + (Array.isArray((sanitized as any)[key]) ? (sanitized as any)[key].length : 1), 0) });
+    } catch (err: any) {
+      console.error("[server.ts] CSV Restore failed:", err);
+      res.status(500).json({ error: "Failed to parse or restore CSV snapshot: " + err.message });
     }
   });
 

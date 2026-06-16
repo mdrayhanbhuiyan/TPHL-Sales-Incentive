@@ -69,6 +69,15 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [localImportLoading, setLocalImportLoading] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // Local CSV Database Import/Export interactive states
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvFileName, setCsvFileName] = useState<string>('');
+  const [csvFileContent, setCsvFileContent] = useState<string>('');
+  const [csvFileStats, setCsvFileStats] = useState<{ [key: string]: number } | null>(null);
+  const [csvFileError, setCsvFileError] = useState<string | null>(null);
+  const [csvImportLoading, setCsvImportLoading] = useState<boolean>(false);
+  const [csvIsDragging, setCsvIsDragging] = useState<boolean>(false);
+
   // Custom confirmation modal state to prevent INP blocking
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -481,6 +490,178 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     toast.success("Import setup cleared.");
   };
 
+  // CSV Backup Snapshot helper validations/parsing
+  const parseAndValidateCSV = (text: string, filename: string) => {
+    setCsvFileError(null);
+    setCsvFileStats(null);
+    setCsvFileContent('');
+
+    try {
+      if (!text || text.trim() === '') {
+        throw new Error("Uploaded CSV file is empty.");
+      }
+
+      const lines = text.split(/\r?\n/);
+      const tablesFound: { [key: string]: number } = {};
+      let currentTable: string | null = null;
+      let inQuotes = false;
+      let rowCount = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith('# TABLE:') && !inQuotes) {
+          if (currentTable && rowCount > 0) {
+            tablesFound[currentTable] = rowCount;
+          }
+          const tableName = line.replace('# TABLE:', '').trim();
+          currentTable = tableName;
+          rowCount = -1; // next line is headers list
+          continue;
+        }
+
+        for (const c of line) {
+          if (c === '"') inQuotes = !inQuotes;
+        }
+
+        if (inQuotes) continue;
+
+        if (currentTable) {
+          rowCount++;
+        }
+      }
+      if (currentTable && rowCount > 0) {
+        tablesFound[currentTable] = rowCount;
+      }
+
+      if (Object.keys(tablesFound).length === 0 || (!tablesFound.projects && !tablesFound.salesExecutives)) {
+        throw new Error("Validation failed! The file does not appear to contain valid TPHL tables (e.g. 'projects' or 'salesExecutives'). Please verify it is a valid CSV database backup.");
+      }
+
+      setCsvFileName(filename);
+      setCsvFileContent(text);
+      setCsvFileStats(tablesFound);
+      toast.success("CSV Backup Snapshot validated successfully!");
+    } catch (err: any) {
+      setCsvFileError(err.message || "Failed to parse CSV database snapshot.");
+      toast.error(err.message || "Incorrect CSV schema.");
+    }
+  };
+
+  const handleExportCSVBackup = async () => {
+    try {
+      toast.info("Compiling system CSV backup tables...");
+      const res = await fetch('/api/system/backup-csv', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (!res.ok) throw new Error("Failed to export database in CSV snapshot.");
+      
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `tphl_database_snapshot_csv_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Consolidated database tables exported and downloaded in CSV format!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download database CSV snapshot.");
+    }
+  };
+
+  const executeLocalCSVImport = () => {
+    if (!csvFileContent) {
+      toast.error("No valid CSV content loaded.");
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: "Incorporate CSV Database Snapshot",
+      message: `CRITICAL ACTION: Are you sure you want to restore the local database from CSV snapshot backup "${csvFileName}"? This will COMPLETELY overwrite all active portal database tables, wipe current catalog records, reload configuration profiles, and recalculate commission cascades chronologically. This cannot be undone.`,
+      confirmText: "Yes, Inject tables from CSV",
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setCsvImportLoading(true);
+        try {
+          const res = await fetch('/api/system/restore-csv', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: csvFileContent
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Server CSV restore transaction failed.");
+
+          toast.success("Database restored successfully from CSV tables snapshot!");
+          setSuccess("Overwrote all records and recalculated entire database successfully from CSV tables backup!");
+          
+          setCsvFile(null);
+          setCsvFileName('');
+          setCsvFileContent('');
+          setCsvFileStats(null);
+          
+          fetchData();
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          toast.error(err.message || "Failed to import database from CSV.");
+          setCsvFileError(err.message || "Import failed.");
+        } finally {
+          setCsvImportLoading(false);
+        }
+      }
+    });
+  };
+
+  const cancelCSVBackupImport = () => {
+    setCsvFile(null);
+    setCsvFileName('');
+    setCsvFileContent('');
+    setCsvFileStats(null);
+    setCsvFileError(null);
+    toast.success("CSV Import setup cleared.");
+  };
+
+  const handleCSVDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setCsvIsDragging(false);
+    setCsvFileError(null);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      setCsvFileError("Unsupported file type. Only valid CSV backup (.csv) files are permitted.");
+      toast.error("Unsupported file format.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateCSV(text, file.name);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCsvFileError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateCSV(text, file.name);
+    };
+    reader.readAsText(file);
+  };
+
   const handleClearNotif = async () => {
     try {
       await fetch('/api/system/notifications/clear', {
@@ -838,6 +1019,140 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           ) : (
             <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
           )}
+        </div>
+      </div>
+
+      {/* CSV Database backup & restore */}
+      <div className="mt-6">
+        <h3 className="text-xs font-bold tracking-wider text-gray-400 uppercase mb-4">CSV Master Database Administration (Import/Export)</h3>
+        
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* CSV Export Card */}
+          <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-sm font-bold text-gray-800">Export All Database Tables to CSV</h2>
+              </div>
+              <p className="text-xs text-gray-500 leading-normal">
+                Download your complete portal database in standard, human-readable comma-separated CSV format. This packages all tables (Users, Projects, Sales Teams, Sales Executives, Incentives, Audit Logs, and unit configurations) together inside a single, beautifully organized database snapshot file. Perfect for spreadsheets or cross-compatibility.
+              </p>
+            </div>
+            {userRole === 'Admin' ? (
+              <button
+                onClick={handleExportCSVBackup}
+                className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer mt-4"
+              >
+                <Download className="w-4 h-4" /> Export Complete CSV Database Snapshot
+              </button>
+            ) : (
+              <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
+            )}
+          </div>
+
+          {/* CSV Import Card */}
+          <div className="bg-white border border-gray-105 rounded-3xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-sm font-bold text-gray-800">Restore Entire Database from CSV Snapshot</h2>
+              </div>
+              <p className="text-xs text-gray-500 leading-normal">
+                Restore the database or import lists from a previously exported database snapshot CSV file. The system validates headers, maps indexes, checks references and imports all sections cleanly.
+              </p>
+            </div>
+
+            {userRole === 'Admin' ? (
+              <div className="mt-2 space-y-3">
+                {!csvFileContent && !csvFileError ? (
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setCsvIsDragging(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setCsvIsDragging(false); }}
+                    onDrop={handleCSVDrop}
+                    className={`border-2 border-dashed rounded-2xl p-4.5 text-center transition cursor-pointer flex flex-col items-center justify-center space-y-2 select-none ${
+                      csvIsDragging
+                        ? 'border-emerald-500 bg-emerald-50/55 text-emerald-700'
+                        : 'border-gray-200 hover:border-emerald-300 bg-gray-50 hover:bg-gray-50/80 text-gray-500'
+                    }`}
+                  >
+                    <Upload className={`w-6 h-6 ${csvIsDragging ? 'text-emerald-600 animate-bounce' : 'text-gray-400'}`} />
+                    <div className="text-center">
+                      <p className="text-[11px] font-bold">Drag &amp; drop database backup CSV file</p>
+                      <p className="text-[9px] text-gray-400 mt-0.5">only .csv format exported by system is supported</p>
+                    </div>
+                    <label className="bg-white hover:bg-gray-50 border border-gray-200 text-[10px] font-semibold text-gray-700 px-3 py-1.5 rounded-lg cursor-pointer shadow-3xs inline-block">
+                      Browse File
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleCSVFileSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                ) : csvFileError ? (
+                  <div className="bg-rose-50 border border-rose-105 rounded-2xl p-4 space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <ShieldAlert className="w-4.5 h-4.5 text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] font-bold text-rose-800">CSV Precheck Failed</p>
+                        <p className="text-[9px] text-rose-700 mt-0.5 whitespace-pre-wrap leading-tight">{csvFileError}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={cancelCSVBackupImport}
+                      className="w-full bg-white hover:bg-rose-50 text-rose-600 text-[10px] font-bold py-1.5 rounded-lg border border-rose-200 cursor-pointer transition text-center"
+                    >
+                      Clear &amp; Try Again
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                    <div className="leading-tight flex items-center justify-between border-b border-emerald-100/55 pb-2">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-[11px] font-extrabold text-emerald-800 break-all">{csvFileName}</p>
+                        <span className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-semibold mt-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                          CSV Schema Parsed
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-gray-700">Detected Database Collections:</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {csvFileStats && Object.entries(csvFileStats).map(([table, count]) => (
+                          <div key={table} className="bg-white border border-gray-100 rounded-xl p-1.5 text-center leading-normal shadow-3xs">
+                            <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold truncate" title={table}>{table}</span>
+                            <strong className="text-xs text-emerald-800">{count} rows</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={executeLocalCSVImport}
+                        disabled={csvImportLoading}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-lg transition shadow-xs text-center cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        {csvImportLoading ? "Importing..." : "Inject CSV snapshot"}
+                      </button>
+                      <button
+                        onClick={cancelCSVBackupImport}
+                        disabled={csvImportLoading}
+                        className="bg-gray-105 hover:bg-gray-200 disabled:opacity-50 text-gray-600 text-[10px] font-bold px-3 py-2 rounded-lg transition text-center cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
+            )}
+          </div>
         </div>
       </div>
 
