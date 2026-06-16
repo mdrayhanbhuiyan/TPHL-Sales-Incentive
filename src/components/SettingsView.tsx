@@ -54,6 +54,21 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [gShowAllJson, setGShowAllJson] = useState<boolean>(false);
   const [gSearchName, setGSearchName] = useState<string>('');
 
+  // Local JSON Database Import interactive states
+  const [localFileParsed, setLocalFileParsed] = useState<any | null>(null);
+  const [localFileName, setLocalFileName] = useState<string>('');
+  const [localFileStats, setLocalFileStats] = useState<{
+    projects?: number;
+    executives?: number;
+    teams?: number;
+    sales?: number;
+    incentives?: number;
+    logs?: number;
+  } | null>(null);
+  const [localFileError, setLocalFileError] = useState<string | null>(null);
+  const [localImportLoading, setLocalImportLoading] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -110,7 +125,11 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         }
       }, 800);
     } catch (err: any) {
-      toast.error("Google Drive connection failed: " + err.message);
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('popup-closed-by-user')) {
+        toast.error("Sign-in cancelled: The Google sign-in window was closed before completing.");
+      } else {
+        toast.error("Google Drive connection failed: " + err.message);
+      }
     } finally {
       setGLoading(false);
     }
@@ -276,41 +295,145 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     }
   };
 
-  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const parseAndValidateJSON = (jsonText: string, filename: string) => {
+    setLocalFileError(null);
+    setLocalFileParsed(null);
+    setLocalFileStats(null);
+    setLocalFileName(filename);
+    try {
+      const parsed = JSON.parse(jsonText);
+      
+      // Essential structural verification check
+      if (!parsed.projects || !parsed.salesExecutives || !parsed.salesTeams) {
+        throw new Error("Missing essential relational structures like 'projects', 'salesExecutives', or 'salesTeams'. Please verify that this is a valid TPHL Master Backup JSON.");
+      }
+
+      const projectsCount = Array.isArray(parsed.projects) ? parsed.projects.length : 0;
+      const executivesCount = Array.isArray(parsed.salesExecutives) ? parsed.salesExecutives.length : 0;
+      const teamsCount = Array.isArray(parsed.salesTeams) ? parsed.salesTeams.length : 0;
+      const salesCount = Array.isArray(parsed.sales) ? parsed.sales.length : 0;
+      const incentivesCount = Array.isArray(parsed.salesIncentives) ? parsed.salesIncentives.length : 0;
+      const logsCount = Array.isArray(parsed.auditLogs) ? parsed.auditLogs.length : 0;
+
+      setLocalFileParsed(parsed);
+      setLocalFileStats({
+        projects: projectsCount,
+        executives: executivesCount,
+        teams: teamsCount,
+        sales: salesCount,
+        incentives: incentivesCount,
+        logs: logsCount
+      });
+      toast.success("Validation Successful! Local JSON file ready to import.");
+    } catch (err: any) {
+      console.error(err);
+      setLocalFileError(err.message || "Invalid backup schema or corrupted JSON file structure.");
+      toast.error("Incorrect file structure.");
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
     setError(null);
     setSuccess(null);
+    setLocalFileError(null);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      setLocalFileError("Unsupported file type. Only valid JSON (.json) database files are permitted for import.");
+      toast.error("Unsupported file format.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateJSON(text, file.name);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleLocalFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    setSuccess(null);
+    setLocalFileError(null);
+
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        const res = await fetch('/api/system/restore', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify(parsed)
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Failed to restore");
-        }
-
-        setSuccess("Database master recovery successfully loaded. Reloading system catalogs...");
-        toast.success("Database master recovery successfully loaded!");
-        fetchData();
-        // Force fully reload window to lock recalculated db indexes
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (err: any) {
-        setError(err.message || "Invalid backup schema file format.");
-        toast.error(err.message || "Failed to restore database backup.");
-      }
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateJSON(text, file.name);
     };
     reader.readAsText(file);
+  };
+
+  const executeLocalImportTransformation = async () => {
+    if (!localFileParsed) {
+      toast.error("No valid dataset loaded.");
+      return;
+    }
+
+    const confirmed = window.confirm(`CRITICAL CONFIRMATION: Are you sure you want to restore the local database backup file "${localFileName}"? This will COMPLETELY overwrite all active portal database records, wipe corresponding catalog references, and load new calculation matrices.`);
+    if (!confirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setLocalImportLoading(true);
+    try {
+      const res = await fetch('/api/system/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(localFileParsed)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Server restore transaction failed");
+      }
+
+      setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);
+      toast.success("Database master recovery successfully loaded!");
+      
+      // Clear loaded local preview
+      setLocalFileParsed(null);
+      setLocalFileName('');
+      setLocalFileStats(null);
+
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setError("Import transaction failed: " + err.message);
+      toast.error("Import failed.");
+    } finally {
+      setLocalImportLoading(false);
+    }
+  };
+
+  const cancelLocalBackupImport = () => {
+    setLocalFileParsed(null);
+    setLocalFileName('');
+    setLocalFileStats(null);
+    setLocalFileError(null);
+    toast.success("Import setup cleared.");
   };
 
   const handleClearNotif = async () => {
@@ -567,22 +690,106 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Upload className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-sm font-bold text-gray-800">Restore System Master Dump</h2>
+              <h2 className="text-sm font-bold text-gray-800">Restore System Master Dump (JSON)</h2>
             </div>
             <p className="text-xs text-gray-500 leading-normal">
-              Select a previously exported TPHL database dump file. This completely overwrites the active platform database records, chronologically re-maps the sequence IDs, and re-computes active incentive commission rates.
+              Directly import a previously exported TPHL database dump JSON file. The system will pre-validate all elements side-by-side prior to injection.
             </p>
           </div>
           {userRole === 'Admin' ? (
-            <label className="flex items-center justify-center gap-1.5 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer text-center select-none mt-4">
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleRestore}
-                className="hidden"
-              />
-              Upload Schema Backup &amp; Recalculate
-            </label>
+            <div className="mt-2 space-y-3">
+              {!localFileParsed && !localFileError ? (
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-2xl p-4.5 text-center transition cursor-pointer flex flex-col items-center justify-center space-y-2 select-none ${
+                    isDragging
+                      ? 'border-indigo-500 bg-indigo-50/55 text-indigo-700'
+                      : 'border-gray-200 hover:border-indigo-300 bg-gray-50 hover:bg-gray-50/80 text-gray-500'
+                  }`}
+                >
+                  <Upload className={`w-6 h-6 ${isDragging ? 'text-indigo-600 animate-bounce' : 'text-gray-400'}`} />
+                  <div className="text-center">
+                    <p className="text-[11px] font-bold">Drag &amp; drop database backup file</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">only .json format supported</p>
+                  </div>
+                  <label className="bg-white hover:bg-gray-50 border border-gray-200 text-[10px] font-semibold text-gray-700 px-3 py-1.5 rounded-lg cursor-pointer shadow-3xs inline-block">
+                    Browse File
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleLocalFileSelect}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : localFileError ? (
+                <div className="bg-rose-50 border border-rose-105 rounded-2xl p-4 space-y-2.5">
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert className="w-4.5 h-4.5 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[10px] font-bold text-rose-800">Validation Rejected</p>
+                      <p className="text-[9px] text-rose-700 mt-0.5 whitespace-pre-wrap leading-tight">{localFileError}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={cancelLocalBackupImport}
+                    className="w-full bg-white hover:bg-rose-50 text-rose-600 text-[10px] font-bold py-1.5 rounded-lg border border-rose-200 cursor-pointer transition text-center"
+                  >
+                    Clear &amp; Try Again
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-emerald-50/40 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                  <div className="leading-tight flex items-center justify-between border-b border-emerald-100/50 pb-2">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-[11px] font-extrabold text-emerald-800 break-all">{localFileName}</p>
+                      <span className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-semibold mt-1">
+                        <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                        Schema Verified
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="bg-white border border-emerald-100/40 rounded-xl p-1.5 text-center leading-normal">
+                      <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold">Projects</span>
+                      <strong className="text-xs text-gray-700">{localFileStats?.projects ?? 0}</strong>
+                    </div>
+                    <div className="bg-white border border-emerald-100/40 rounded-xl p-1.5 text-center leading-normal">
+                      <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold">Executives</span>
+                      <strong className="text-xs text-gray-700">{localFileStats?.executives ?? 0}</strong>
+                    </div>
+                    <div className="bg-white border border-emerald-100/40 rounded-xl p-1.5 text-center leading-normal">
+                      <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold">Teams</span>
+                      <strong className="text-xs text-gray-700">{localFileStats?.teams ?? 0}</strong>
+                    </div>
+                    <div className="bg-white border border-emerald-100/40 rounded-xl p-1.5 text-center leading-normal">
+                      <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold">Sales Records</span>
+                      <strong className="text-xs text-gray-700">{localFileStats?.sales ?? 0}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={executeLocalImportTransformation}
+                      disabled={localImportLoading}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-lg transition shadow-xs text-center cursor-pointer"
+                    >
+                      {localImportLoading ? "Importing..." : "Inject DB"}
+                    </button>
+                    <button
+                      onClick={cancelLocalBackupImport}
+                      disabled={localImportLoading}
+                      className="bg-gray-105 hover:bg-gray-200 disabled:opacity-50 text-gray-600 text-[10px] font-bold px-3 py-2 rounded-lg transition text-center cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
           )}
