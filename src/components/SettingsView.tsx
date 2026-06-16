@@ -69,6 +69,21 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [localImportLoading, setLocalImportLoading] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // Custom confirmation modal state to prevent INP blocking
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    onConfirm: () => {}
+  });
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -206,50 +221,56 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     reader.readAsText(file);
   };
 
-  const handleRestoreFromGDrive = async (fileId: string, fileName: string) => {
-    const confirmed = window.confirm(`Are you sure you want to restore the backup "${fileName}"? This will COMPLETELY overwrite all active platform database records.`);
-    if (!confirmed) return;
-
-    setError(null);
-    setSuccess(null);
-    setGLoading(true);
-    try {
-      const backupContent = await downloadGoogleDriveBackup(fileId);
-
-      const res = await fetch('/api/system/restore', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify(backupContent)
-      });
-
-      if (!res.ok) {
-        let errorMsg = "Server restore transaction failed";
+  const handleRestoreFromGDrive = (fileId: string, fileName: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Restore Backup Confirmation",
+      message: `Are you sure you want to restore the backup "${fileName}"? This will COMPLETELY overwrite all active platform database records, remap entity IDs, and run dynamic incentive rate calculations. This operation is irreversible.`,
+      confirmText: "Yes, Restore Backup",
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setError(null);
+        setSuccess(null);
+        setGLoading(true);
         try {
-          const errData = await res.json();
-          errorMsg = errData.error || errorMsg;
-        } catch (e) {
-          try {
-            const txt = await res.text();
-            if (txt) errorMsg = txt.slice(0, 150);
-          } catch (_) {}
-        }
-        throw new Error(errorMsg);
-      }
+          const backupContent = await downloadGoogleDriveBackup(fileId);
 
-      setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
-      toast.success("Google Drive backup restored successfully!");
-      fetchData();
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      console.error(err);
-      setError("Failed to restore backup from Google Drive: " + err.message);
-      toast.error("Failed to restore Google Drive backup.");
-    } finally {
-      setGLoading(false);
-    }
+          const res = await fetch('/api/system/restore', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(backupContent)
+          });
+
+          if (!res.ok) {
+            let errorMsg = "Server restore transaction failed";
+            try {
+              const errData = await res.json();
+              errorMsg = errData.error || errorMsg;
+            } catch (e) {
+              try {
+                const txt = await res.text();
+                if (txt) errorMsg = txt.slice(0, 150);
+              } catch (_) {}
+            }
+            throw new Error(errorMsg);
+          }
+
+          setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
+          toast.success("Google Drive backup restored successfully!");
+          fetchData();
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          console.error(err);
+          setError("Failed to restore backup from Google Drive: " + err.message);
+          toast.error("Failed to restore Google Drive backup.");
+        } finally {
+          setGLoading(false);
+        }
+      }
+    });
   };
 
   const handleBackup = async () => {
@@ -391,59 +412,65 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     reader.readAsText(file);
   };
 
-  const executeLocalImportTransformation = async () => {
+  const executeLocalImportTransformation = () => {
     if (!localFileParsed) {
       toast.error("No valid dataset loaded.");
       return;
     }
 
-    const confirmed = window.confirm(`CRITICAL CONFIRMATION: Are you sure you want to restore the local database backup file "${localFileName}"? This will COMPLETELY overwrite all active portal database records, wipe corresponding catalog references, and load new calculation matrices.`);
-    if (!confirmed) return;
-
-    setError(null);
-    setSuccess(null);
-    setLocalImportLoading(true);
-    try {
-      const res = await fetch('/api/system/restore', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify(localFileParsed)
-      });
-
-      if (!res.ok) {
-        let errorMsg = "Server restore transaction failed";
+    setConfirmModal({
+      isOpen: true,
+      title: "Incorporate Database Snapshot",
+      message: `CRITICAL CONFIRMATION: Are you sure you want to restore the local database backup file "${localFileName}"? This will COMPLETELY overwrite all active portal database records, wipe corresponding catalog references, and load new calculation matrices. This cannot be undone.`,
+      confirmText: "Yes, Inject Database",
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setError(null);
+        setSuccess(null);
+        setLocalImportLoading(true);
         try {
-          const errData = await res.json();
-          errorMsg = errData.error || errorMsg;
-        } catch (e) {
-          try {
-            const txt = await res.text();
-            if (txt) errorMsg = txt.slice(0, 150);
-          } catch (_) {}
+          const res = await fetch('/api/system/restore', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(localFileParsed)
+          });
+
+          if (!res.ok) {
+            let errorMsg = "Server restore transaction failed";
+            try {
+              const errData = await res.json();
+              errorMsg = errData.error || errorMsg;
+            } catch (e) {
+              try {
+                const txt = await res.text();
+                if (txt) errorMsg = txt.slice(0, 150);
+              } catch (_) {}
+            }
+            throw new Error(errorMsg);
+          }
+
+          setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);
+          toast.success("Database master recovery successfully loaded!");
+          
+          // Clear loaded local preview
+          setLocalFileParsed(null);
+          setLocalFileName('');
+          setLocalFileStats(null);
+
+          fetchData();
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          console.error(err);
+          setError("Import transaction failed: " + err.message);
+          toast.error("Import failed.");
+        } finally {
+          setLocalImportLoading(false);
         }
-        throw new Error(errorMsg);
       }
-
-      setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);
-      toast.success("Database master recovery successfully loaded!");
-      
-      // Clear loaded local preview
-      setLocalFileParsed(null);
-      setLocalFileName('');
-      setLocalFileStats(null);
-
-      fetchData();
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      console.error(err);
-      setError("Import transaction failed: " + err.message);
-      toast.error("Import failed.");
-    } finally {
-      setLocalImportLoading(false);
-    }
+    });
   };
 
   const cancelLocalBackupImport = () => {
@@ -897,6 +924,37 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           </div>
         </div>
       </div>
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs transition-all duration-300">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-gray-100 shadow-2xl space-y-4 scale-100 opacity-100 transition-all duration-300">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-amber-50 rounded-2xl shrink-0">
+                <ShieldAlert className="w-6 h-6 text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-extrabold text-gray-800">{confirmModal.title}</h3>
+                <p className="text-xs text-gray-500 leading-relaxed font-medium">{confirmModal.message}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                onClick={() => confirmModal.onConfirm()}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer transition shadow-xs text-center"
+              >
+                {confirmModal.confirmText}
+              </button>
+              <button
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2.5 bg-gray-105 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-xl cursor-pointer transition text-center"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
