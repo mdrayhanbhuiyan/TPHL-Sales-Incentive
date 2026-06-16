@@ -2,9 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import x from "./src/server/db.js";
-import y from "./src/server/auth.js";
-import z from "./src/server/firebase.js";
+
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
