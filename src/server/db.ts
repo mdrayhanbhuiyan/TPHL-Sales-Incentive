@@ -486,8 +486,8 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
           saleVolume = pos.land_share_price;
         }
         if (pos.unit_configs) {
-          const letter = sale.unit_name.slice(-1).toUpperCase();
-          if (pos.unit_configs[letter] !== undefined) {
+          const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
+          if (letter && pos.unit_configs[letter] !== undefined) {
             saleVolume = pos.unit_configs[letter].land_share;
           }
         }
@@ -531,8 +531,8 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => p.id === sale.project_on_sale_id) : null;
     if (pos) {
       if (pos.unit_configs) {
-        const letter = sale.unit_name.slice(-1).toUpperCase();
-        if (pos.unit_configs[letter] !== undefined) {
+        const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
+        if (letter && pos.unit_configs[letter] !== undefined) {
           soldUnitSizeNum = pos.unit_configs[letter].size;
           soldUnitSizeStr = `${soldUnitSizeNum} SFT`;
         } else {
@@ -600,8 +600,8 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
         currentLandShare = pos.land_share_price;
       }
       if (pos.unit_configs) {
-        const letter = sale.unit_name.slice(-1).toUpperCase();
-        if (pos.unit_configs[letter] !== undefined) {
+        const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
+        if (letter && pos.unit_configs[letter] !== undefined) {
           currentLandShare = pos.unit_configs[letter].land_share;
         }
       }
