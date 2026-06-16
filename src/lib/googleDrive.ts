@@ -66,14 +66,25 @@ export function getCachedToken(): string | null {
 }
 
 /**
- * Lists the TPHL Master backup files inside the user's Google Drive.
+ * Lists the JSON backup files inside the user's Google Drive.
+ * Can be filtered or show all JSON files.
  */
-export async function listGoogleDriveBackups(): Promise<any[]> {
+export async function listGoogleDriveBackups(showAllJson: boolean = false, searchName: string = ''): Promise<any[]> {
   const token = getCachedToken();
   if (!token) throw new Error("Not logged in to Google Drive.");
 
+  let query = "mimeType='application/json'";
+  if (!showAllJson) {
+    query += " and name contains 'tphl_incentive_master_backup'";
+  }
+  if (searchName.trim()) {
+    // Sanitise search parameter
+    const cleanSearch = searchName.replace(/'/g, "\\'");
+    query += ` and name contains '${cleanSearch}'`;
+  }
+
   const response = await fetch(
-    "https://www.googleapis.com/drive/v3/files?q=name contains 'tphl_incentive_master_backup' and mimeType='application/json'&orderBy=createdTime desc&fields=files(id, name, createdTime, size)",
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&orderBy=createdTime desc&fields=files(id, name, createdTime, size)`,
     {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -113,17 +124,17 @@ export async function downloadGoogleDriveBackup(fileId: string): Promise<any> {
 }
 
 /**
- * Uploads a master backup payload to the user's Google Drive.
+ * Uploads any JSON backup payload to the user's Google Drive with an optional custom name.
  */
-export async function uploadGoogleDriveBackup(backupData: any): Promise<{ id: string; name: string }> {
+export async function uploadGoogleDriveBackup(backupData: any, customName?: string): Promise<{ id: string; name: string }> {
   const token = getCachedToken();
   if (!token) throw new Error("Not logged in to Google Drive.");
 
-  const fileName = `tphl_incentive_master_backup_${new Date().toISOString().split('T')[0]}_${Math.floor(Date.now() / 1000)}.json`;
+  const fileName = customName || `tphl_incentive_master_backup_${new Date().toISOString().split('T')[0]}_${Math.floor(Date.now() / 1000)}.json`;
   const metadata = {
     name: fileName,
     mimeType: 'application/json',
-    description: 'TPHL Incentive Commission Portal Master DB Backup File'
+    description: 'TPHL Incentive Commission Portal Backup File'
   };
 
   const fileContent = JSON.stringify(backupData, null, 2);

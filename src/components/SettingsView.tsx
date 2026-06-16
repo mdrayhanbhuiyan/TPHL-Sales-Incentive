@@ -20,7 +20,8 @@ import {
   CloudDownload,
   Link2,
   LogOut,
-  FolderOpen
+  FolderOpen,
+  Search
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
@@ -50,6 +51,8 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [gUser, setGUser] = useState<GoogleDriveUser | null>(getCachedGoogleUser());
   const [gDriveFiles, setGDriveFiles] = useState<any[]>([]);
   const [gLoading, setGLoading] = useState<boolean>(false);
+  const [gShowAllJson, setGShowAllJson] = useState<boolean>(false);
+  const [gSearchName, setGSearchName] = useState<string>('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -74,9 +77,9 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     }
   };
 
-  const fetchGDriveFiles = async () => {
+  const fetchGDriveFiles = async (showAll = gShowAllJson, search = gSearchName) => {
     try {
-      const files = await listGoogleDriveBackups();
+      const files = await listGoogleDriveBackups(showAll, search);
       setGDriveFiles(files);
     } catch (err: any) {
       console.error("[SettingsView] Failed to list GDrive files:", err);
@@ -86,9 +89,9 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   useEffect(() => {
     fetchData();
     if (getCachedGoogleUser()) {
-      fetchGDriveFiles();
+      fetchGDriveFiles(gShowAllJson, gSearchName);
     }
-  }, [authToken]);
+  }, [authToken, gShowAllJson]);
 
   const handleGDriveLogin = async () => {
     setGLoading(true);
@@ -100,7 +103,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       toast.success("Successfully authenticated with Google Drive!");
       setTimeout(async () => {
         try {
-          const files = await listGoogleDriveBackups();
+          const files = await listGoogleDriveBackups(gShowAllJson, gSearchName);
           setGDriveFiles(files);
         } catch (e) {
           console.error(e);
@@ -142,7 +145,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       setSuccess(`Successfully backed up project data to Google Drive! File created: ${result.name}`);
       toast.success("Backup uploaded to Google Drive!");
       
-      await fetchGDriveFiles();
+      await fetchGDriveFiles(gShowAllJson, gSearchName);
     } catch (err: any) {
       console.error(err);
       setError("Google Drive backup failed: " + err.message);
@@ -150,6 +153,38 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     } finally {
       setGLoading(false);
     }
+  };
+
+  const handleUploadLocalFileToGDrive = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    setSuccess(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setGLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        
+        // Basic schema validation
+        if (!parsed.users || !parsed.projects) {
+          throw new Error("Invalid TPHL master backup format: missing core collections structure.");
+        }
+
+        const result = await uploadGoogleDriveBackup(parsed, file.name);
+        setSuccess(`Successfully uploaded local backup file "${file.name}" direct to Google Drive!`);
+        toast.success("File uploaded to Google Drive successfully!");
+        fetchGDriveFiles(gShowAllJson, gSearchName);
+      } catch (err: any) {
+        console.error(err);
+        setError("Failed to upload local backup to Google Drive: " + err.message);
+        toast.dark ? toast.error("Upload to Google Drive failed.") : toast.error("Invalid file schema or connection failed.");
+      } finally {
+        setGLoading(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleRestoreFromGDrive = async (fileId: string, fileName: string) => {
@@ -334,7 +369,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           <div className="flex items-center gap-3">
             <Cloud className="w-6 h-6 text-indigo-600 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-gray-800">Google Drive Cloud Synchronisation</h2>
+              <h2 className="text-sm font-bold text-gray-800">Google Drive Cloud Synchronisation &amp; Database Importer</h2>
               <p className="text-[11px] text-gray-500">Persist, backup, or retrieve complete portal database states dynamically on serverless platforms.</p>
             </div>
           </div>
@@ -379,47 +414,85 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                 Connect your Google Drive accounts securely using Google OAuth to directly write master snapshots to your personal cloud files. Backups are stored as private JSON records and can be retrieved instantly.
               </p>
 
-              <button
-                onClick={handleBackupToGDrive}
-                disabled={gLoading || !gUser}
-                className="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer"
-              >
-                <CloudUpload className="w-4.5 h-4.5" />
-                Save Active State to Google Drive
-              </button>
+              <div className="space-y-2.5">
+                <button
+                  onClick={handleBackupToGDrive}
+                  disabled={gLoading || !gUser}
+                  className="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  <CloudUpload className="w-4.5 h-4.5" />
+                  Save Active State to Google Drive
+                </button>
+
+                {gUser && (
+                  <label className="flex items-center justify-center gap-2 w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 text-gray-700 text-xs font-semibold py-3 rounded-xl shadow-3xs transition cursor-pointer text-center select-none">
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleUploadLocalFileToGDrive}
+                      className="hidden"
+                      disabled={gLoading}
+                    />
+                    <Upload className="w-4 h-4 text-gray-500" />
+                    Upload Local File to Google Drive
+                  </label>
+                )}
+              </div>
             </div>
 
             <div className="md:col-span-7 bg-gray-50/50 border border-gray-100 rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
                 <div className="flex items-center gap-2 text-gray-700">
                   <FolderOpen className="w-4 h-4 text-indigo-500" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Available Database Snapshots</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Scan &amp; Import from Google Drive</span>
                 </div>
-                {gUser && (
-                  <button
-                    onClick={fetchGDriveFiles}
-                    disabled={gLoading}
-                    className="p-1 text-gray-400 hover:text-indigo-600 cursor-pointer transition"
-                    title="Refresh listing"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
 
+              {gUser && (
+                <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={gSearchName}
+                      onChange={(e) => setGSearchName(e.target.value)}
+                      placeholder="Search file name..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-200 focus:border-indigo-400 rounded-xl text-xs outline-hidden transition"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={gShowAllJson ? 'all' : 'portal'}
+                      onChange={(e) => setGShowAllJson(e.target.value === 'all')}
+                      className="bg-white border border-gray-200 text-xs rounded-xl px-2.5 py-1.5 focus:border-indigo-400 outline-hidden transition"
+                    >
+                      <option value="portal">Portal Backups Only</option>
+                      <option value="all">All JSON Files</option>
+                    </select>
+                    <button
+                      onClick={() => fetchGDriveFiles(gShowAllJson, gSearchName)}
+                      disabled={gLoading}
+                      className="bg-gray-800 hover:bg-gray-950 text-white text-xs font-semibold px-4 py-1.5 rounded-xl transition cursor-pointer"
+                    >
+                      Apply Filter
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {!gUser ? (
-                <div className="py-8 text-center text-xs text-gray-400 italic">
-                  Please connect Google Drive to scan for live backup files.
+                <div className="py-12 text-center text-xs text-gray-400 italic">
+                  Please connect Google Drive to scan and import database backup files.
                 </div>
               ) : gDriveFiles.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-400 italic">
-                  No prior database backups found on Google Drive. Click "Save Active State" to create one.
+                <div className="py-12 text-center text-xs text-gray-400 italic">
+                  No matching JSON backup files found in connected Google Drive. Click "Upload Local File" or "Save Active State" to create one.
                 </div>
               ) : (
                 <div className="max-h-44 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
                   {gDriveFiles.map((file) => (
                     <div key={file.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl p-3 hover:border-indigo-150 transition shadow-3xs">
-                      <div className="leading-tight">
+                      <div className="leading-tight flex-1 min-w-0 pr-3">
                         <p className="text-[11px] font-bold text-gray-700 break-all">{file.name}</p>
                         <p className="text-[9px] text-gray-400 font-mono mt-0.5">
                           Created: {new Date(file.createdTime).toLocaleString()} &bull; Size: {file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'N/A'}
@@ -428,10 +501,10 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                       <button
                         onClick={() => handleRestoreFromGDrive(file.id, file.name)}
                         disabled={gLoading}
-                        className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-emerald-100 cursor-pointer transition shrink-0"
+                        className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-emerald-100 cursor-pointer transition shrink-0"
                       >
                         <CloudDownload className="w-3.5 h-3.5" />
-                        Restore
+                        Import &amp; Restore
                       </button>
                     </div>
                   ))}
