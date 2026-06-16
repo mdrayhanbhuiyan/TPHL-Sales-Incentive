@@ -71,10 +71,10 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
   const getFilteredIncentives = () => {
     return incentives.filter(inc => {
       const matchSearch = 
-        inc.project_name.toLowerCase().includes(search.toLowerCase()) ||
-        inc.executive_name.toLowerCase().includes(search.toLowerCase()) ||
-        inc.unit_name.toLowerCase().includes(search.toLowerCase()) ||
-        inc.employee_id.toLowerCase().includes(search.toLowerCase());
+        String(inc.project_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        String(inc.executive_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        String(inc.unit_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        String(inc.employee_id || '').toLowerCase().includes(search.toLowerCase());
 
       const matchProj = selProject === 'All' || inc.project_name === selProject;
       const matchMonth = selMonth === 'All' || String(inc.month) === selMonth;

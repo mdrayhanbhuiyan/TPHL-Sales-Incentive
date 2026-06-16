@@ -93,6 +93,49 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
     fetchData();
   }, [authToken]);
 
+  const handleExportCSV = () => {
+    const headers = [
+      "ID",
+      "Employee ID",
+      "Name",
+      "Sales Team ID",
+      "Sales Team Name",
+      "Project ID",
+      "Project Name",
+      "Sales Target",
+      "Joining Date"
+    ];
+
+    const rows = executives.map(e => {
+      const teamName = teams.find(t => t.id === e.sales_team_id)?.team_name || 'No Team';
+      const projectName = projects.find(p => p.id === e.project_id)?.project_name || 'No Project';
+      
+      return [
+        `"${e.id}"`,
+        `"${e.emp_id}"`,
+        `"${String(e.name || '').replace(/"/g, '""')}"`,
+        `"${e.sales_team_id || ''}"`,
+        `"${String(teamName || '').replace(/"/g, '""')}"`,
+        `"${e.project_id || ''}"`,
+        `"${String(projectName || '').replace(/"/g, '""')}"`,
+        e.sales_target || 1,
+        `"${e.joining_date || ''}"`
+      ];
+    });
+
+    const csvString = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `tphl_sales_executives_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Successfully exported Sales Executives!");
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -338,7 +381,7 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
               item._reason = `Duplicate Employee ID in upload file.`;
             } else {
               // Check duplicate in database list
-              const existingDupe = executives.some(e => e.employee_id.toLowerCase() === empIdVal.toLowerCase());
+              const existingDupe = executives.some(e => String(e.employee_id || '').toLowerCase() === String(empIdVal || '').toLowerCase());
               if (existingDupe) {
                 item._invalid = true;
                 item._reason = `Employee ID already exists inside TPHL directory.`;
@@ -416,10 +459,10 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
   };
 
   const filteredExecs = executives.filter(e => 
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.employee_id.toLowerCase().includes(search.toLowerCase()) ||
-    e.team_name.toLowerCase().includes(search.toLowerCase()) ||
-    e.project_name.toLowerCase().includes(search.toLowerCase())
+    String(e.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(e.employee_id || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(e.team_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(e.project_name || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -430,23 +473,32 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Sales Executive Directory</h1>
           <p className="mt-1 text-sm text-gray-500">Track company sales engineers, manage active divisions alignments, and configure monthly targets.</p>
         </div>
-        {userRole === 'Admin' && (
-          <div className="flex flex-wrap gap-2.5 self-start sm:self-auto">
-            <button
-              onClick={openCsvModal}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl border border-gray-200 shadow-sm cursor-pointer transition active:scale-95"
-              title="Upload Sales Executive directory in batch using CSV"
-            >
-              <Upload className="w-4 h-4 text-indigo-500 font-bold" /> Import via CSV
-            </button>
-            <button
-              onClick={openAddModal}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95"
-            >
-              <Plus className="w-4.5 h-4.5" /> Register Officer
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-gray-55 text-gray-700 text-xs font-semibold rounded-xl border border-gray-200 shadow-sm cursor-pointer transition active:scale-95"
+            title="Export listed Sales Executives directory as CSV spreadsheet"
+          >
+            <Download className="w-4 h-4 text-emerald-600" /> Export CSV
+          </button>
+          {userRole === 'Admin' && (
+            <>
+              <button
+                onClick={openCsvModal}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-100 shadow-sm cursor-pointer transition active:scale-95"
+                title="Upload Sales Executive directory in batch using CSV"
+              >
+                <Upload className="w-4 h-4 font-bold" /> Import via CSV
+              </button>
+              <button
+                onClick={openAddModal}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95"
+              >
+                <Plus className="w-4.5 h-4.5" /> Register Officer
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Action Line alerts */}
@@ -522,7 +574,7 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
                 <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5 space-y-1">
                   <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider block">🔒 Demo Account Sign-In</span>
                   <div className="flex items-center justify-between text-[11px] font-mono text-amber-900">
-                    <span>{exec.employee_id.toLowerCase()}@tphl.com</span>
+                    <span>{String(exec.employee_id || '').toLowerCase()}@tphl.com</span>
                     <span className="text-[9px] bg-white border border-amber-200 px-1.5 rounded text-gray-400 font-bold">password123</span>
                   </div>
                 </div>

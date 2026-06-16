@@ -84,6 +84,39 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
     fetchTeamsAndProjects();
   }, [authToken]);
 
+  const handleExportCSV = () => {
+    const headers = [
+      "ID",
+      "Team Name",
+      "Team Leader",
+      "Sales Target",
+      "Assigned Projects"
+    ];
+
+    const rows = teams.map(t => {
+      const projectsAssigned = t.projects ? t.projects.map((p: any) => p.project_name).join("; ") : "";
+      return [
+        `"${t.id}"`,
+        `"${String(t.team_name || '').replace(/"/g, '""')}"`,
+        `"${String(t.team_leader || '').replace(/"/g, '""')}"`,
+        t.sales_target || 5,
+        `"${String(projectsAssigned || '').replace(/"/g, '""')}"`
+      ];
+    });
+
+    const csvString = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `tphl_sales_teams_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Successfully exported Sales Teams!");
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -428,23 +461,32 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Sales Teams Directory</h1>
           <p className="mt-1 text-sm text-gray-500">Coordinate regional project distribution networks and target quotas for team divisions.</p>
         </div>
-        {userRole === 'Admin' && (
-          <div className="flex flex-wrap gap-2.5 self-start sm:self-auto">
-            <button
-              onClick={openCsvModal}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl border border-gray-200 shadow-sm cursor-pointer transition active:scale-95"
-              title="Upload Sales Teams directory in batch using CSV"
-            >
-              <Upload className="w-4 h-4 text-indigo-500 font-bold" /> Import via CSV
-            </button>
-            <button
-              onClick={openAddModal}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95"
-            >
-              <Plus className="w-4.5 h-4.5" /> Organize Team
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-gray-55 text-gray-700 text-xs font-semibold rounded-xl border border-gray-200 shadow-sm cursor-pointer transition active:scale-95"
+            title="Export listed Sales Teams directory as CSV spreadsheet"
+          >
+            <Download className="w-4 h-4 text-emerald-600" /> Export CSV
+          </button>
+          {userRole === 'Admin' && (
+            <>
+              <button
+                onClick={openCsvModal}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-100 shadow-sm cursor-pointer transition active:scale-95"
+                title="Upload Sales Teams directory in batch using CSV"
+              >
+                <Upload className="w-4 h-4 font-bold" /> Import via CSV
+              </button>
+              <button
+                onClick={openAddModal}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md cursor-pointer transition active:scale-95"
+              >
+                <Plus className="w-4.5 h-4.5" /> Organize Team
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Message alerts */}

@@ -1082,6 +1082,90 @@ export async function startServer() {
     res.json(store.unitRegistrations[rIndex]);
   });
 
+  app.post('/api/unit-registrations/bulk', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only Admins can bulk manage unit registrations." });
+      return;
+    }
+
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "Missing or invalid items array for bulk import." });
+      return;
+    }
+
+    const store = getStore();
+    if (!store.unitRegistrations) store.unitRegistrations = [];
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const skipped: string[] = [];
+
+    for (const item of items) {
+      const { project_on_sale_id, project_name, unit_name, registered, registration_date } = item;
+      if (!unit_name) {
+        skippedCount++;
+        skipped.push("Row skipped: 'unit_name' is missing.");
+        continue;
+      }
+
+      // Find the project on sale first by name or ID
+      let resolvedPosId = project_on_sale_id;
+      if (!resolvedPosId && project_name) {
+        const matched = (store.projectsOnSale || []).find(p => p.project_name.toLowerCase().trim() === String(project_name).toLowerCase().trim());
+        if (matched) {
+          resolvedPosId = matched.id;
+        }
+      }
+
+      if (!resolvedPosId) {
+        skippedCount++;
+        skipped.push(`Row skipped: Unit "${unit_name}" has no matching Project on sale by ID/name "${project_on_sale_id || project_name || 'None'}".`);
+        continue;
+      }
+
+      const cleanUnit = String(unit_name).trim().toUpperCase();
+      const existingIdx = store.unitRegistrations.findIndex(r => 
+        String(r.project_on_sale_id) === String(resolvedPosId) && 
+        String(r.unit_name).trim().toUpperCase() === cleanUnit
+      );
+
+      const isRegistered = (String(registered).trim().toLowerCase() === 'yes' || String(registered).trim().toLowerCase() === 'true') ? 'Yes' : 'No';
+      const cleanDate = registration_date ? String(registration_date).trim() : undefined;
+
+      if (existingIdx > -1) {
+        store.unitRegistrations[existingIdx] = {
+          ...store.unitRegistrations[existingIdx],
+          registered: isRegistered,
+          registration_date: cleanDate
+        };
+        updatedCount++;
+      } else {
+        store.unitRegistrations.push({
+          id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+          project_on_sale_id: resolvedPosId,
+          unit_name: cleanUnit,
+          registered: isRegistered,
+          registration_date: cleanDate,
+          created_at: new Date().toISOString()
+        });
+        updatedCount++;
+      }
+    }
+
+    recalculateAllIncentivesDirect(store);
+    writeStore(store);
+
+    logAction(user, "Bulk Import Unit Registrations", `Imported/updated ${updatedCount} unit registration records via CSV.`);
+    res.json({
+      success: true,
+      updatedCount,
+      skippedCount,
+      skipped
+    });
+  });
+
   // --- SALES TEAM MANAGEMENT API ---
   app.get('/api/teams', authenticateToken, (req, res) => {
     const store = getStore();

@@ -16,7 +16,9 @@ import {
   ArrowRight, 
   HelpCircle,
   FileCheck2,
-  CalendarDays
+  CalendarDays,
+  Download,
+  Upload
 } from 'lucide-react';
 import { ProjectOnSale, UnitRegistration, Project } from '../types';
 import { useToast } from './Toast';
@@ -39,6 +41,207 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'registered' | 'pending'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // CSV Import/Export states
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const isAdmin = userRole === 'Admin';
+
+  const handleExportCSV = () => {
+    const headers = [
+      "ID",
+      "Project ID",
+      "Project Name",
+      "Unit Name",
+      "Registered (Yes/No)",
+      "Registration Date",
+      "Created At"
+    ];
+
+    const currentProjectName = selectedProject ? selectedProject.project_name : "All_Projects";
+
+    // Export all registrations for selected project or active list
+    const targetRegs = unitRegistrations.filter(r => r.project_on_sale_id === selectedProjectId);
+
+    const rows = targetRegs.map(r => [
+      `"${r.id}"`,
+      `"${r.project_on_sale_id}"`,
+      `"${String(currentProjectName || '').replace(/"/g, '""')}"`,
+      `"${String(r.unit_name || '').replace(/"/g, '""')}"`,
+      `"${String(r.registered || '').replace(/"/g, '""')}"`,
+      `"${String(r.registration_date || '').replace(/"/g, '""')}"`,
+      `"${String(r.created_at || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvString = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `tphl_unit_registrations_${currentProjectName.replace(/\s+/g, '_')}_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Successfully exported Unit Registrations!");
+  };
+
+  const handleDownloadDummyCSV = () => {
+    const headers = [
+      "project_name",
+      "unit_name",
+      "registered",
+      "registration_date"
+    ].join(",");
+
+    const rows = [
+      `"${selectedProject?.project_name || 'Project-A'}","1A","Yes","2026-06-15"`,
+      `"${selectedProject?.project_name || 'Project-A'}","1B","No",""`
+    ].join("\n");
+
+    const csvContent = headers + "\n" + rows;
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "tphl_unit_registrations_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFile(file);
+    readCsvData(file);
+  };
+
+  const readCsvData = (file: File) => {
+    setCsvError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) {
+          setCsvError("Uploaded file is empty.");
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).filter(Boolean);
+        if (lines.length < 2) {
+          setCsvError("CSV file must contain headers and at least one row.");
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        const required = ['unit_name', 'registered'];
+        const missing = required.filter(h => !headers.includes(h));
+        if (missing.length > 0) {
+          setCsvError(`Missing required column headers: ${missing.join(', ')}`);
+          return;
+        }
+
+        const items: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          const values: string[] = [];
+          let currentVal = '';
+          let inQuotes = false;
+          for (let charIndex = 0; charIndex < line.length; charIndex++) {
+            const char = line[charIndex];
+            if (char === '"' || char === "'") {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+              currentVal = '';
+            } else {
+              currentVal += char;
+            }
+          }
+          values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+
+          const item: any = {};
+          headers.forEach((h, index) => {
+            item[h] = values[index] !== undefined ? values[index] : '';
+          });
+
+          if (!item.unit_name) {
+            item._invalid = true;
+            item._reason = "Unit name is required.";
+          } else {
+            const regStateStr = String(item.registered).toLowerCase();
+            if (regStateStr !== 'yes' && regStateStr !== 'no' && regStateStr !== 'true' && regStateStr !== 'false') {
+              item._invalid = true;
+              item._reason = "Registered field must be 'Yes', 'No', 'true', or 'false'.";
+            }
+          }
+
+          items.push(item);
+        }
+
+        if (items.length === 0) {
+          setCsvError("No valid rows parsed.");
+        } else {
+          setParsedData(items);
+        }
+      } catch (err) {
+        setCsvError("Error reading the file.");
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const submitCsvImport = async () => {
+    const validRows = parsedData.filter(d => !d._invalid);
+    if (validRows.length === 0) {
+      setCsvError("No valid rows to import.");
+      return;
+    }
+
+    const payload = validRows.map(r => ({
+      project_name: r.project_name || selectedProject?.project_name,
+      project_on_sale_id: r.project_on_sale_id || selectedProjectId,
+      unit_name: r.unit_name,
+      registered: r.registered,
+      registration_date: r.registration_date || undefined
+    }));
+
+    setImporting(true);
+    setCsvError(null);
+    try {
+      const res = await fetch('/api/unit-registrations/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ items: payload })
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Unit registrations import failed.");
+
+      toast.success(`Successfully imported/updated ${result.updatedCount} unit registration deeds!`);
+      setIsCsvModalOpen(false);
+      setCsvFile(null);
+      setParsedData([]);
+      
+      fetchInitialData();
+    } catch (err: any) {
+      setCsvError(err.message);
+      toast.error(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -154,17 +357,42 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
           </p>
         </div>
         {projectsOnSale.length > 0 && (
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="text-gray-400">Select Campaign Property:</span>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 px-3 rounded-xl border border-gray-250 dark:border-slate-700 focus:outline-none cursor-pointer"
+          <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold">
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-400">Select Campaign Property:</span>
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 focus:outline-none cursor-pointer"
+              >
+                {projectsOnSale.map(p => (
+                  <option key={p.id} value={p.id}>{p.project_name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 bg-white hover:bg-gray-100 text-gray-700 font-bold p-2 px-3.5 rounded-xl border border-gray-200 cursor-pointer shadow-sm transition active:scale-95 text-xs"
+              title="Export unit listings as CSV"
             >
-              {projectsOnSale.map(p => (
-                <option key={p.id} value={p.id}>{p.project_name}</option>
-              ))}
-            </select>
+              <Download className="w-3.5 h-3.5 text-emerald-600" /> Export CSV
+            </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setCsvFile(null);
+                  setParsedData([]);
+                  setCsvError(null);
+                  setIsCsvModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold p-2 px-3.5 rounded-xl cursor-pointer shadow-sm transition active:scale-95 text-xs"
+                title="Bulk registry update via CSV"
+              >
+                <Upload className="w-3.5 h-3.5" /> Import CSV
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -347,6 +575,107 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* CSV Bulk uploader modal */}
+      {isCsvModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full border border-gray-100 dark:border-slate-800 p-6 shadow-2xl space-y-6 relative">
+            <button 
+              onClick={() => setIsCsvModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+            
+            <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-805 pb-3">
+              <Upload className="w-5 h-5 text-indigo-600" />
+              <h2 className="text-sm font-bold text-gray-800 dark:text-white">Bulk Unit Registrations &amp; Deeds Import</h2>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                You can import or update deeds using a comma-separated spreadsheet. This automatically maps the unit name to the selected Campaign Property and sets the registered status.
+              </p>
+
+              <div className="flex gap-2.5 bg-indigo-50/50 dark:bg-indigo-950/25 p-3.5 rounded-2xl border border-indigo-100/30">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-indigo-955 dark:text-indigo-350">Download Standard CSV Format</h4>
+                  <p className="text-[10px] text-indigo-800/80 dark:text-indigo-400">Perfectly preset for your selected Campaign Property: <strong className="font-extrabold">{selectedProject?.project_name}</strong>.</p>
+                </div>
+                <button
+                  onClick={handleDownloadDummyCSV}
+                  className="ml-auto flex items-center justify-center gap-1.5 bg-white hover:bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold p-1.5 px-3 rounded-lg shadow-2xs cursor-pointer transition shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" /> Get Demo CSV Form
+                </button>
+              </div>
+
+              {/* Upload Drop Zone */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Upload CSV File</label>
+                <div className="border-2 border-dashed border-indigo-200/60 rounded-2xl p-6 hover:bg-indigo-50/10 transition cursor-pointer text-center relative">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="w-6 h-6 text-indigo-500 mx-auto mb-2" />
+                  <p className="text-xs font-bold text-indigo-950 dark:text-white">
+                    {csvFile ? csvFile.name : "Drag & drop CSV file or click to browse"}
+                  </p>
+                  <p className="text-[9px] text-gray-400 mt-1">Accepts comma-separated spreadsheet only</p>
+                </div>
+              </div>
+
+              {csvError && (
+                <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-[10px] text-rose-800 font-semibold">{csvError}</div>
+              )}
+
+              {parsedData.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-black uppercase tracking-wider text-gray-400">Parsed Entries Preview ({parsedData.length} records)</h3>
+                  <div className="border border-gray-100 dark:border-slate-800 rounded-xl max-h-36 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-850">
+                    {parsedData.slice(0, 50).map((row, index) => (
+                      <div key={index} className={`p-2 text-[10px] flex items-center justify-between font-mono ${row._invalid ? 'bg-rose-50/10' : ''}`}>
+                        <div>
+                          <span className="font-extrabold text-gray-800 dark:text-white">Unit: {row.unit_name || 'N/A'}</span>
+                          <span className="text-gray-400 mx-2">|</span>
+                          <span className="text-gray-500 font-bold">Registered: {row.registered || 'N/A'}</span>
+                        </div>
+                        {row._invalid ? (
+                          <span className="text-rose-600 font-bold">{row._reason}</span>
+                        ) : (
+                          <span className="text-emerald-600 font-bold">✓ Valid</span>
+                        )}
+                      </div>
+                    ))}
+                    {parsedData.length > 50 && (
+                      <div className="p-2 text-center text-[9px] bg-gray-50/50 text-gray-400">And {parsedData.length - 50} more records...</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 dark:border-slate-805">
+              <button
+                onClick={() => setIsCsvModalOpen(false)}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold py-2 rounded-xl px-4 cursor-pointer transition active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitCsvImport}
+                disabled={importing || parsedData.filter(d => !d._invalid).length === 0}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded-xl px-4 cursor-pointer transition active:scale-95 flex items-center gap-1.5 shadow-sm"
+              >
+                {importing ? "Processing..." : `Import ${parsedData.filter(d => !d._invalid).length} Records`}
+              </button>
+            </div>
           </div>
         </div>
       )}

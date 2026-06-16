@@ -173,8 +173,8 @@ export default function ExecutiveIncentiveChart({ authToken, userRole, userProfi
   const totalExecutiveSalesSum = monthlyChartData.reduce((sum, item) => sum + item.salesCount, 0);
 
   const filteredExecutives = executives.filter(e => 
-    e.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    e.employee_id.toLowerCase().includes(searchQuery.toLowerCase())
+    String(e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    String(e.employee_id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

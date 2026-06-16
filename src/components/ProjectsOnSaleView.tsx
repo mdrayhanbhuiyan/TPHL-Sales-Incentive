@@ -142,6 +142,42 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
     fetchData();
   }, [authToken]);
 
+  const handleExportCSV = () => {
+    const headers = [
+      "ID",
+      "Project Name",
+      "Flat Unit Size",
+      "Floor Number",
+      "Units Per Floor",
+      "Total Units",
+      "Default Land Share Price",
+      "Assigned Project ID"
+    ];
+
+    const rows = projectsOnSale.map(p => [
+      `"${p.id}"`,
+      `"${String(p.project_name || '').replace(/"/g, '""')}"`,
+      `"${String(p.flat_unit_size || '').replace(/"/g, '""')}"`,
+      p.floor_number,
+      p.units_per_floor,
+      p.total_units,
+      p.land_share_price || 0,
+      `"${String(p.project_id || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvString = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `tphl_projects_on_sale_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Successfully exported Projects On Sale!");
+  };
+
   const handleOpenDetails = (project: ProjectOnSale) => {
     setSelectedProject(project);
     setSelectedUnit(null);
@@ -515,28 +551,37 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
             Manage pre-sale campaigns, configuration, flat sizes, and relate them with master Project Developments.
           </p>
         </div>
-        {isAdmin && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                setCsvFile(null);
-                setParsedData([]);
-                setCsvError(null);
-                setImportSuccessMessage(null);
-                setIsCsvModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-sm transition-all"
-            >
-              <Upload className="w-4 h-4" /> CSV Auto Import
-            </button>
-            <button
-              onClick={handleOpenCreateModal}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-sm transition-all"
-            >
-              <Plus className="w-4 h-4" /> Add Pre-sale Project
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs px-4 py-2.5 rounded-xl border border-gray-200 cursor-pointer shadow-sm transition-all"
+            title="Export listed Campaigns as CSV"
+          >
+            <Download className="w-4 h-4 text-emerald-600" /> Export CSV
+          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => {
+                  setCsvFile(null);
+                  setParsedData([]);
+                  setCsvError(null);
+                  setImportSuccessMessage(null);
+                  setIsCsvModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-sm transition-all"
+              >
+                <Upload className="w-4 h-4" /> CSV Auto Import
+              </button>
+              <button
+                onClick={handleOpenCreateModal}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-sm transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Pre-sale Project
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {error && (
