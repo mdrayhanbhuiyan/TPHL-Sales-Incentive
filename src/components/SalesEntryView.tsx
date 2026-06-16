@@ -20,6 +20,7 @@ import {
   BookmarkCheck
 } from 'lucide-react';
 import { Project, SalesExecutive, ProjectOnSale } from '../types';
+import { useToast } from './Toast';
 
 interface SalesEntryProps {
   authToken: string;
@@ -28,6 +29,7 @@ interface SalesEntryProps {
 }
 
 export default function SalesEntryView({ authToken, userRole, userProfile }: SalesEntryProps) {
+  const { toast } = useToast();
   const [sales, setSales] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
@@ -139,6 +141,17 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
     if (!isNaN(matchedFloorNum)) {
       setFloorNumber(matchedFloorNum);
     }
+
+    // Dynamic SFT size lookup
+    const campaign = projectsOnSale.find(p => p.id === projectOnSaleId);
+    if (campaign) {
+      const letter = unitNameVal.slice(-1).toUpperCase();
+      if (campaign.unit_configs && campaign.unit_configs[letter]) {
+        setUnitMeasure(`${campaign.unit_configs[letter].size} SFT`);
+      } else {
+        setUnitMeasure(campaign.flat_unit_size);
+      }
+    }
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -155,6 +168,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
 
     if (!projectOnSaleId || !projId || !unitName || !finalExecId || !saleDate) {
       setError("Please fill all required inputs.");
+      toast.warning("Please fill all required fields before submitting.");
       return;
     }
 
@@ -181,10 +195,12 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
       if (!res.ok) throw new Error(data.error || "Failed to log sale");
 
       setSuccess(`Sales record successfully added for unit ${unitName}!`);
+      toast.success(`Sales record successfully added for unit ${unitName}!`);
       setIsAddOpen(false);
       fetchSalesData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to create sales record");
     }
   };
 
@@ -222,10 +238,12 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
       if (!res.ok) throw new Error(data.error || "Failed to adjust sales entry");
 
       setSuccess(`Sales entry for unit ${unitName} adjusted successfully.`);
+      toast.success(`Sales record for unit ${unitName} adjusted successfully.`);
       setIsEditOpen(false);
       fetchSalesData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to update sales record");
     }
   };
 
@@ -252,9 +270,11 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
       if (!res.ok) throw new Error(data.error || "Failed to delete sales log");
 
       setSuccess(`Sales record for unit ${unit} cancelled.`);
+      toast.success(`Sales record for unit ${unit} has been cancelled successfully.`);
       fetchSalesData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to delete sales record");
     }
   };
 
@@ -263,14 +283,25 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
     if (firstCampaign) {
       setProjectOnSaleId(firstCampaign.id);
       setProjId(firstCampaign.project_id);
-      setUnitMeasure(firstCampaign.flat_unit_size);
       
       const units = generateUnits(firstCampaign.floor_number, firstCampaign.units_per_floor);
       setAvailableUnits(units);
-      setUnitName(units[0] || '');
+      const defaultUnit = units[0] || '';
+      setUnitName(defaultUnit);
       
-      const parsedFloor = parseInt(units[0] || '1');
+      const parsedFloor = parseInt(defaultUnit || '1');
       setFloorNumber(isNaN(parsedFloor) ? 1 : parsedFloor);
+
+      if (defaultUnit) {
+        const letter = defaultUnit.slice(-1).toUpperCase();
+        if (firstCampaign.unit_configs && firstCampaign.unit_configs[letter]) {
+          setUnitMeasure(`${firstCampaign.unit_configs[letter].size} SFT`);
+        } else {
+          setUnitMeasure(firstCampaign.flat_unit_size);
+        }
+      } else {
+        setUnitMeasure(firstCampaign.flat_unit_size);
+      }
     } else {
       setProjectOnSaleId('');
       setProjId('');

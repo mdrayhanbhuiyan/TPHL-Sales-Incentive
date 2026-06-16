@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Project } from '../types';
+import { useToast } from './Toast';
 
 interface ProjectViewProps {
   authToken: string;
@@ -31,6 +32,7 @@ interface ProjectViewProps {
 }
 
 export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -243,12 +245,14 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
       if (!res.ok) throw new Error(result.error || "Project bulk import execution failed.");
 
       setSuccess(`Successfully imported projects (${result.createdCount} registered, ${result.updatedCount} synchronized)`);
+      toast.success(`Successfully imported ${result.createdCount + result.updatedCount} projects!`);
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setParsedData([]);
       fetchProjects();
     } catch (err: any) {
       setCsvError(err.message);
+      toast.error(err.message || "Failed to bulk import projects");
     } finally {
       setImporting(false);
     }
@@ -281,6 +285,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
 
     if (!name || !location || !landShareAmount) {
       setError("Please fill out Name, Location and Land Share Amount");
+      toast.warning("Please fill out all required fields before saving.");
       return;
     }
 
@@ -309,6 +314,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to create project");
 
       setSuccess(`Project '${name}' successfully generated!`);
+      toast.success(`Project '${name}' successfully generated!`);
       // Reset
       setName('');
       setLocation('');
@@ -324,6 +330,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
       fetchProjects();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to create project");
     }
   };
 
@@ -357,10 +364,12 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to update project");
 
       setSuccess(`Project '${name}' updated successfully!`);
+      toast.success(`Project '${name}' updated successfully!`);
       setIsEditOpen(false);
       fetchProjects();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to update project");
     }
   };
 
@@ -388,9 +397,11 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
       if (!res.ok) throw new Error(data.error || "Deletion aborted");
 
       setSuccess(`Project '${projName}' deleted successfully!`);
+      toast.success(`Project '${projName}' deleted successfully!`);
       fetchProjects();
     } catch (err: any) {
       setError(err.message || "Failed to delete project");
+      toast.error(err.message || "Failed to delete project");
     }
   };
 
@@ -602,13 +613,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                         Share Value: {proj.land_share_amount.toLocaleString()} BDT
                       </span>
                     </div>
-                    {/* Project registration incentive status */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Registration:</span>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${proj.registration === 'No' ? 'bg-rose-50 text-rose-700 border border-rose-100/50' : 'bg-emerald-50 text-emerald-700 border border-emerald-100/50'}`}>
-                        {proj.registration || 'Yes'}
-                      </span>
-                    </div>
+
                   </div>
                 </div>
 
@@ -679,10 +684,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                 <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Land Share Rate</span>
                 <p className="font-bold text-emerald-700">{selectedProj.land_share_amount.toLocaleString()} BDT</p>
               </div>
-              <div className="bg-gray-100/50 p-3.5 rounded-xl text-xs space-y-1">
-                <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Registration Status</span>
-                <p className="font-bold text-gray-800">{selectedProj.registration || 'Yes'} (Incentives active: {selectedProj.registration === 'No' ? 'No' : 'Yes'})</p>
-              </div>
+
               <div className="bg-gray-100/50 p-3.5 rounded-xl text-xs space-y-1">
                 <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Building Layout Height</span>
                 <p className="font-semibold text-gray-800">{selectedProj.floors} Story Tower ({selectedProj.total_flats} Residential units)</p>
@@ -794,16 +796,6 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-700">Building Elevator Floors</label>
-                  <input
-                    type="number"
-                    value={floors}
-                    onChange={(e) => setFloors(Number(e.target.value))}
-                    className="w-full text-xs bg-gray-50 rounded-lg px-3.5 py-2.5 border border-gray-100 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-gray-700">Project Land Share Amount (BDT)</label>
                   <input
                     type="number"
@@ -836,17 +828,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                   </select>
                 </div>
 
-                <div className="col-span-2 space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-700">Registration</label>
-                  <select
-                    value={registration}
-                    onChange={(e: any) => setRegistration(e.target.value as any)}
-                    className="w-full text-xs bg-gray-50 rounded-lg px-3.5 py-2.5 border border-gray-100 font-semibold text-gray-800 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="Yes">Yes (Add to incentive calculation)</option>
-                    <option value="No">No (Incentive is hidden / deleted)</option>
-                  </select>
-                </div>
+
               </div>
 
               <div className="flex items-center gap-3 border-t border-gray-50 pt-4 mt-5">
@@ -1011,7 +993,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                             <th className="px-4 py-2.5 text-center">Unit Measure</th>
                             <th className="px-4 py-2.5 text-center">Floors / Units</th>
                             <th className="px-4 py-2.5 text-right">Land share BDT</th>
-                            <th className="px-4 py-2.5 text-right">Operation / Registration</th>
+                            <th className="px-4 py-2.5 text-right">Operation Status</th>
                             <th className="px-4 py-2.5 text-right">Mapping Verdict</th>
                           </tr>
                         </thead>
@@ -1041,7 +1023,6 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
                                 }`}>
                                   {row.status || 'Active'}
                                 </span>
-                                <span className="text-gray-400">Reg: {row.registration || 'Yes'}</span>
                               </td>
                               <td className="px-4 py-3 text-right text-[10px] whitespace-nowrap">
                                 {row._invalid ? (

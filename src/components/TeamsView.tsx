@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { SalesTeam, Project } from '../types';
+import { useToast } from './Toast';
 
 interface TeamsViewProps {
   authToken: string;
@@ -28,6 +29,7 @@ interface TeamsViewProps {
 }
 
 export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
+  const { toast } = useToast();
   const [teams, setTeams] = useState<any[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,7 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
 
     if (!name || !leader) {
       setError("Please fill out Team Name and Leader designation");
+      toast.warning("Please fill out all required fields before saving.");
       return;
     }
 
@@ -112,10 +115,12 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to create team");
 
       setSuccess(`Team '${name}' successfully organized.`);
+      toast.success(`Team '${name}' successfully organized!`);
       setIsAddOpen(false);
       fetchTeamsAndProjects();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to organize team");
     }
   };
 
@@ -144,10 +149,12 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to edit team");
 
       setSuccess(`Team '${name}' settings updated.`);
+      toast.success(`Team '${name}' settings successfully updated!`);
       setIsEditOpen(false);
       fetchTeamsAndProjects();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to update team");
     }
   };
 
@@ -175,9 +182,11 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to delete team");
 
       setSuccess(`Team '${teamName}' dissolved.`);
+      toast.success(`Team '${teamName}' dissolved successfully.`);
       fetchTeamsAndProjects();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to dissolve team");
     }
   };
 
@@ -383,12 +392,14 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
       if (!res.ok) throw new Error(result.error || "CSV bulk team registration failed.");
 
       setSuccess(`Success! Organized ${result.importedCount} new teams/divisions via CSV. ${result.skippedCount} rows skipped.`);
+      toast.success(`Successfully imported ${result.importedCount} new teams/divisions!`);
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setParsedData([]);
       fetchTeamsAndProjects();
     } catch (err: any) {
       setCsvError(err.message);
+      toast.error(err.message || "Failed to import teams via CSV");
     } finally {
       setImporting(false);
     }

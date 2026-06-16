@@ -1,0 +1,264 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "team_id": { "type": "string" },
+        "employee_id": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "created_at"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Real estate project details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_name": { "type": "string" },
+        "location": { "type": "string" },
+        "unit_measure": { "type": "string" },
+        "floors": { "type": "number" },
+        "units": { "type": "number" },
+        "total_flats": { "type": "number" },
+        "land_share_amount": { "type": "number" },
+        "first_sale_date": { "type": "string" },
+        "status": { "type": "string" },
+        "registration": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "project_name", "location", "land_share_amount", "created_at"]
+    },
+    "SalesTeam": {
+      "title": "SalesTeam",
+      "description": "Sales division or team details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "team_name": { "type": "string" },
+        "leader_id": { "type": "string" },
+        "sales_target": { "type": "number" },
+        "monthly_targets": { "type": "object" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "team_name"]
+    },
+    "TeamProject": {
+      "title": "TeamProject",
+      "description": "Project associated with a team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "team_id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "assigned_at": { "type": "string" }
+      },
+      "required": ["id", "team_id", "project_id"]
+    },
+    "SalesExecutive": {
+      "title": "SalesExecutive",
+      "description": "Sales Executive personnel record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employee_id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "team_id": { "type": "string" },
+        "target": { "type": "number" },
+        "monthly_targets": { "type": "object" },
+        "status": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "name", "email"]
+    },
+    "IncentiveRule": {
+      "title": "IncentiveRule",
+      "description": "Slab percentages and floor bonuses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "sale_1_percent": { "type": "number" },
+        "sale_2_percent": { "type": "number" },
+        "sale_3_percent": { "type": "number" },
+        "sale_4_percent": { "type": "number" },
+        "sale_5_percent": { "type": "number" },
+        "sale_6_percent": { "type": "number" },
+        "sale_7_percent": { "type": "number" },
+        "first_floor_bonus_percent": { "type": "number" },
+        "top_floor_bonus_percent": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "project_id"]
+    },
+    "BonusRules": {
+      "title": "BonusRules",
+      "description": "Global performance target bonuses",
+      "type": "object",
+      "properties": {
+        "target_90_bonus": { "type": "number" },
+        "target_100_bonus": { "type": "number" },
+        "team_target_bonus": { "type": "number" }
+      },
+      "required": ["target_90_bonus", "target_100_bonus", "team_target_bonus"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Registered unit transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "project_on_sale_id": { "type": "string" },
+        "executive_id": { "type": "string" },
+        "unit_name": { "type": "string" },
+        "floor_number": { "type": "number" },
+        "client_name": { "type": "string" },
+        "sale_date": { "type": "string" },
+        "status": { "type": "string" },
+        "sale_number": { "type": "number" }
+      },
+      "required": ["id", "project_id", "executive_id", "unit_name", "sale_date"]
+    },
+    "SalesIncentive": {
+      "title": "SalesIncentive",
+      "description": "Resolved payout or claiming ledger for a sale",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sale_id": { "type": "string" },
+        "executive_id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "base_incentive": { "type": "number" },
+        "floor_bonus": { "type": "number" },
+        "target_bonus": { "type": "number" },
+        "team_bonus": { "type": "number" },
+        "total_incentive": { "type": "number" },
+        "month": { "type": "number" },
+        "year": { "type": "number" }
+      },
+      "required": ["id", "sale_id", "executive_id", "project_id", "total_incentive"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and activity auditing trail",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "timestamp"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "System broadcast notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "title", "message", "timestamp", "read"]
+    },
+    "ProjectOnSale": {
+      "title": "ProjectOnSale",
+      "description": "Specific block or flat available under a project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "block_name": { "type": "string" },
+        "unit_name": { "type": "string" },
+        "floor_number": { "type": "number" },
+        "status": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "project_id", "unit_name", "floor_number"]
+    },
+    "UnitRegistration": {
+      "title": "UnitRegistration",
+      "description": "Official legal registration state of an on-sale block",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_on_sale_id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "unit_name": { "type": "string" },
+        "registered": { "type": "string" },
+        "registration_date": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "project_on_sale_id", "registered"]
+    }
+  },
+  "firestore": {
+    "sales_portal_data/users": {
+      "schema": "User",
+      "description": "Store users array"
+    },
+    "sales_portal_data/projects": {
+      "schema": "Project",
+      "description": "Store projects array"
+    },
+    "sales_portal_data/salesTeams": {
+      "schema": "SalesTeam",
+      "description": "Store salesTeams array"
+    },
+    "sales_portal_data/teamProjects": {
+      "schema": "TeamProject",
+      "description": "Store teamProjects array"
+    },
+    "sales_portal_data/salesExecutives": {
+      "schema": "SalesExecutive",
+      "description": "Store salesExecutives array"
+    },
+    "sales_portal_data/incentiveRules": {
+      "schema": "IncentiveRule",
+      "description": "Store incentiveRules array"
+    },
+    "sales_portal_data/bonusRules": {
+      "schema": "BonusRules",
+      "description": "Store bonusRules details"
+    },
+    "sales_portal_data/sales": {
+      "schema": "Sale",
+      "description": "Store sales array"
+    },
+    "sales_portal_data/salesIncentives": {
+      "schema": "SalesIncentive",
+      "description": "Store salesIncentives array"
+    },
+    "sales_portal_data/auditLogs": {
+      "schema": "AuditLog",
+      "description": "Store system audit logs array"
+    },
+    "sales_portal_data/notifications": {
+      "schema": "AppNotification",
+      "description": "Store active system notifications"
+    },
+    "sales_portal_data/projectsOnSale": {
+      "schema": "ProjectOnSale",
+      "description": "Store list of units/flats currently available for sale"
+    },
+    "sales_portal_data/unitRegistrations": {
+      "schema": "UnitRegistration",
+      "description": "Store list of legal registrations of units"
+    }
+  }
+}

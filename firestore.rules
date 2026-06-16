@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Security rules allowing access to the central server-synced database document collection.
+    // Since the app uses a server-side client connection that runs unauthenticated,
+    // we allow read/write access to this specific storage prefix.
+    match /sales_portal_data/{document} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -133,6 +133,13 @@ export interface ProjectOnSale {
   units_per_floor: number; // Units per floor (e.g., 2, 4)
   total_units: number; // floor_number * units_per_floor
   created_at: string;
+  land_share_price?: number; // Default land share price for this pre-sale project
+  unit_configs?: {
+    [key: string]: {
+      size: number;
+      land_share: number;
+    }
+  };
 }
 
 export interface UnitRegistration {

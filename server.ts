@@ -13,7 +13,9 @@ import {
   logAction, 
   addNotification, 
   recalculateAllIncentives,
-  recalculateAllIncentivesDirect
+  recalculateAllIncentivesDirect,
+  initFirestore,
+  getLiveFirestoreBackup
 } from './src/server/db';
 import { 
   User, 
@@ -24,7 +26,10 @@ import {
   Sale 
 } from './src/types';
 
-async function startServer() {
+export async function startServer() {
+  // Initialize and synchronise the in-memory cache with Firebase Firestore state on startup
+  await initFirestore();
+
   const app = express();
   const PORT = 3000;
 
@@ -265,12 +270,42 @@ async function startServer() {
       const countFlats = filtered.length;
 
       const percent = exec.target > 0 ? (countFlats / exec.target) * 100 : 0;
+
+      // Group current month sales into weeks of the month for visual heat map densities
+      let w1 = 0, w2 = 0, w3 = 0, w4 = 0, w5 = 0;
+      let totalVolumeBDT = 0;
+
+      filtered.forEach(sale => {
+        const d = new Date(sale.sale_date);
+        const day = d.getDate();
+        
+        const proj = store.projects.find(p => p.id === sale.project_id);
+        if (proj) {
+          totalVolumeBDT += proj.land_share_amount;
+        }
+
+        if (day <= 7) w1++;
+        else if (day <= 14) w2++;
+        else if (day <= 21) w3++;
+        else if (day <= 28) w4++;
+        else w5++;
+      });
+
+      // Find incentives earned for this executive in the same month/year
+      const monthlyIncs = targetIncentives.filter(si => si.executive_id === exec.id && si.month === testMonth && si.year === testYear);
+      const totalIncentiveBDT = monthlyIncs.reduce((sum, item) => sum + item.total_incentive, 0);
+      const milestoneBonusBDT = monthlyIncs.reduce((sum, item) => sum + (item.floor_bonus + item.target_bonus + item.team_bonus), 0);
+
       return {
         id: exec.id,
         name: exec.name,
         target: exec.target,
         achieved: countFlats,
-        percentage: percent
+        percentage: percent,
+        totalVolumeBDT,
+        totalIncentiveBDT,
+        milestoneBonusBDT,
+        weeksCount: [w1, w2, w3, w4, w5]
       };
     });
 
@@ -517,7 +552,8 @@ async function startServer() {
       },
       execAchievements: execAchievementRates,
       execAchievementsPeriod: periodName,
-      timelineActivities: sortedActivities
+      timelineActivities: sortedActivities,
+      bonusRules: store.bonusRules
     });
   });
 
@@ -853,7 +889,7 @@ async function startServer() {
       return;
     }
 
-    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor } = req.body;
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price } = req.body;
     if (!project_name || !flat_unit_size || !project_id || !floor_number || !units_per_floor) {
       res.status(400).json({ error: "Missing required fields for project on sale." });
       return;
@@ -871,6 +907,8 @@ async function startServer() {
       floor_number: Number(floor_number),
       units_per_floor: Number(units_per_floor),
       total_units,
+      land_share_price: land_share_price !== undefined ? Number(land_share_price) : undefined,
+      unit_configs: unit_configs || {},
       created_at: new Date().toISOString()
     };
 
@@ -914,7 +952,7 @@ async function startServer() {
     }
 
     const current = store.projectsOnSale[pIndex];
-    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor } = req.body;
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price } = req.body;
 
     const floorNum = floor_number !== undefined ? Number(floor_number) : current.floor_number;
     const unitsPerFloor = units_per_floor !== undefined ? Number(units_per_floor) : current.units_per_floor;
@@ -927,7 +965,9 @@ async function startServer() {
       project_id: project_id || current.project_id,
       floor_number: floorNum,
       units_per_floor: unitsPerFloor,
-      total_units
+      total_units,
+      land_share_price: land_share_price !== undefined ? (land_share_price === null ? undefined : Number(land_share_price)) : current.land_share_price,
+      unit_configs: unit_configs !== undefined ? unit_configs : current.unit_configs
     };
 
     store.projectsOnSale[pIndex] = updated;
@@ -1839,10 +1879,7 @@ async function startServer() {
       };
     });
 
-    const finalIncentives = resolved.filter(inc => {
-      const proj = store.projects.find(p => p.id === inc.project_id);
-      return !proj || proj.registration !== 'No';
-    });
+    const finalIncentives = resolved;
 
     res.json(finalIncentives);
   });
@@ -1880,6 +1917,23 @@ async function startServer() {
     const store = getStore();
     logAction(user, "Database Backup", "Downloaded a database state backup.");
     res.json(store);
+  });
+
+  // Live Firestore Backup (Download raw Firestore snapshot directly)
+  app.get('/api/system/firestore-backup', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const liveStore = await getLiveFirestoreBackup();
+      logAction(user, "Firestore Live Backup", "Downloaded a direct backup of all Firestore collection states.");
+      res.json(liveStore);
+    } catch (err: any) {
+      console.error("[server.ts] Live Firestore Backup endpoint error:", err);
+      res.status(500).json({ error: "Failed to download live Firestore datasets: " + err.message });
+    }
   });
 
   // Database Restore (Upload/Import)
@@ -1928,11 +1982,19 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`TPHL Sales Incentive running on port ${PORT}`);
-  });
+  if (process.env.VERCEL) {
+    console.log("[server.ts] Server running in Vercel environment. Bypassing active socket listen.");
+  } else {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`TPHL Sales Incentive running on port ${PORT}`);
+    });
+  }
+
+  return app;
 }
 
-startServer().catch(err => {
-  console.error("Critical server boot error:", err);
-});
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error("Critical server boot error:", err);
+  });
+}

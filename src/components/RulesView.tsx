@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { Project, IncentiveRule } from '../types';
+import { useToast } from './Toast';
 
 interface RulesViewProps {
   authToken: string;
@@ -28,6 +29,7 @@ interface RulesViewProps {
 }
 
 export default function RulesView({ authToken, userRole }: RulesViewProps) {
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjId, setSelectedProjId] = useState('');
   
@@ -339,12 +341,14 @@ export default function RulesView({ authToken, userRole }: RulesViewProps) {
       if (!res.ok) throw new Error(result.error || "Rules bulk configuration failed.");
 
       setSuccess(`Success! Synchronized ${result.updatedCount} incentive rules via CSV configuration.`);
+      toast.success(`Synchronized ${result.updatedCount} incentive rules via CSV!`);
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setParsedData([]);
       fetchRulesAndProjects(selectedProjId);
     } catch (err: any) {
       setCsvError(err.message);
+      toast.error(err.message || "Failed to bulk import rules via CSV");
     } finally {
       setImporting(false);
     }
@@ -466,10 +470,12 @@ export default function RulesView({ authToken, userRole }: RulesViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to update project rule");
 
       setSuccess("Rules for selected project modified and cached successfully.");
+      toast.success("Rules for selected project modified successfully!");
       // Trigger update of state to match recalculations
       fetchRulesAndProjects(selectedProjId);
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to save project rules");
     } finally {
       setSubmittingProject(false);
     }
@@ -499,9 +505,11 @@ export default function RulesView({ authToken, userRole }: RulesViewProps) {
       if (!res.ok) throw new Error(data.error || "Failed to update target bonuses");
 
       setSuccess("Target bonus thresholds updated successfully! Database recalculated.");
+      toast.success("Target bonus thresholds and global rules updated successfully!");
       fetchRulesAndProjects(selectedProjId);
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to save target bonuses");
     } finally {
       setSubmittingGlobal(false);
     }

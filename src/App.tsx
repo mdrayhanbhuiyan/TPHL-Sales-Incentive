@@ -140,7 +140,7 @@ export default function App() {
   const renderActiveView = () => {
     switch (activeRoute) {
       case 'dashboard':
-        return <DashboardView authToken={authToken} />;
+        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} />;
       case 'projects-on-sale':
         return <ProjectsOnSaleView authToken={authToken} userRole={userProfile.role} />;
       case 'registration':
@@ -162,7 +162,7 @@ export default function App() {
       case 'settings':
         return <SettingsView authToken={authToken} userRole={userProfile.role} />;
       default:
-        return <DashboardView authToken={authToken} />;
+        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} />;
     }
   };
 

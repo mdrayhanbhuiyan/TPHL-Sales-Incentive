@@ -15,18 +15,27 @@ import {
   Activity,
   ChevronRight,
   FlameKindling,
-  Building2
+  Building2,
+  Trophy,
+  Sparkles,
+  Star,
+  Target,
+  Medal
 } from 'lucide-react';
+import ExecutiveIncentiveChart from './ExecutiveIncentiveChart';
 
 interface DashboardProps {
   authToken: string;
+  userRole?: string;
+  userProfile?: any;
 }
 
-export default function DashboardView({ authToken }: DashboardProps) {
+export default function DashboardView({ authToken, userRole, userProfile }: DashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'sale' | 'milestone' | 'project'>('all');
+  const [heatmapMode, setHeatmapMode] = useState<'weekly' | 'kpis'>('weekly');
 
   useEffect(() => {
     fetch('/api/dashboard/analytics', {
@@ -227,6 +236,13 @@ export default function DashboardView({ authToken }: DashboardProps) {
         return null;
       })()}
 
+      {/* Executive Monthly Incentive Earnings Bar Chart Component */}
+      <ExecutiveIncentiveChart 
+        authToken={authToken} 
+        userRole={userRole || ''} 
+        userProfile={userProfile} 
+      />
+
       {/* Handcrafted Responsive Full-Width Timeline wrapper */}
       <div className="space-y-6">
         {/* Timeline Chart */}
@@ -272,6 +288,558 @@ export default function DashboardView({ authToken }: DashboardProps) {
             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-xs" /> Incentives Paid</span>
           </div>
         </div>
+
+        {/* Team Leader Subordinate Performance Heat Map Dashboard Sub-view */}
+        {(userRole === 'Sales Team Leader' || userRole === 'Admin') && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 space-y-6 shadow-sm">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-indigo-50 border border-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-400 font-sans">
+                    {userRole === 'Admin' ? 'Admin Super-Desk' : 'Team Captain Desk'}
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] text-gray-400 font-mono font-bold tracking-wide">Real-time Performance Synchronizer</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <FlameKindling className="w-5 h-5 text-indigo-600" /> Subordinate Performance Heat Map
+                </h2>
+                <p className="text-xs text-gray-400 dark:text-slate-400">
+                  Visual heat matrix detailing booking velocity frequencies, current targets, and financial achievements of your direct subordinates for the active period ({execAchievementsPeriod || "Current Month"}).
+                </p>
+              </div>
+
+              {/* Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold text-gray-400 font-mono uppercase tracking-wide">Select Dimension:</span>
+                <div className="inline-flex p-0.5 bg-gray-50 dark:bg-slate-850 border border-gray-100 dark:border-slate-800 rounded-xl space-x-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setHeatmapMode('weekly')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                      heatmapMode === 'weekly'
+                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'
+                    }`}
+                  >
+                    ⏱ Weekly Frequency
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHeatmapMode('kpis')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                      heatmapMode === 'kpis'
+                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'
+                    }`}
+                  >
+                    🎯 Core KPIs Intensity
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Subordinates List and Heat Map Matrix Container */}
+            <div className="w-full overflow-x-auto border border-gray-100 dark:border-slate-800 rounded-2xl bg-gray-50/20 dark:bg-slate-900/40">
+              {achievements && achievements.length > 0 ? (
+                <table className="w-full min-w-[750px] border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-slate-800 bg-gray-50/50">
+                      <th className="py-3 px-5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-white dark:bg-slate-900 w-[200px] sticky left-0 z-10 border-r border-gray-50 dark:border-slate-800/60 font-sans">
+                        Executive Officer
+                      </th>
+                      {heatmapMode === 'weekly' ? (
+                        <>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">W1 <span className="block font-mono text-[9px] text-gray-400 font-normal">Day 1-7</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">W2 <span className="block font-mono text-[9px] text-gray-400 font-normal font-sans">Day 8-14</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">W3 <span className="block font-mono text-[9px] text-gray-400 font-normal font-sans">Day 15-21</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">W4 <span className="block font-mono text-[9px] text-gray-400 font-normal font-sans">Day 22-28</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">W5 <span className="block font-mono text-[9px] text-gray-400 font-normal font-sans">Day 29-31</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider border-l border-gray-100 dark:border-slate-800 bg-gray-50/10 font-sans">Target</th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/10 font-sans">Realized</th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/10 font-sans">Goal Rate</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Targets <span className="block font-mono text-[9px] text-gray-400 font-normal">units</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Realized <span className="block font-mono text-[9px] text-gray-400 font-normal">units</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 tracking-wider text-center uppercase font-sans">Completion rate</th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Volume Value <span className="block font-mono text-[9px] text-gray-400 font-normal">BDT lakhs</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-emerald-600 uppercase tracking-wider font-sans">Commissions <span className="block font-mono text-[9px] text-emerald-500 font-normal">BDT aggregate</span></th>
+                          <th className="py-3 px-4 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wider font-sans">Milestone Bonuses <span className="block font-mono text-[9px] text-amber-500 font-normal">BDT earned</span></th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {achievements.map((ach: any) => {
+                      const weeksCountArr = ach.weeksCount || [0, 0, 0, 0, 0];
+                      const targetVal = ach.target || 0;
+                      const achievedVal = ach.achieved || 0;
+                      const percentageVal = ach.percentage || 0;
+                      const totalVolumeBDTVal = ach.totalVolumeBDT || 0;
+                      const totalIncentiveBDTVal = ach.totalIncentiveBDT || 0;
+                      const milestoneBonusBDTVal = ach.milestoneBonusBDT || 0;
+
+                      return (
+                        <tr key={ach.id || ach.name} className="hover:bg-gray-50/40 dark:hover:bg-slate-850/25 transition">
+                          {/* Subordinate info */}
+                          <td className="py-3 px-5 bg-white dark:bg-slate-900 sticky left-0 z-10 border-r border-gray-100 dark:border-slate-800/60 shadow-3xs">
+                            <div className="flex items-center gap-2">
+                              <span className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 text-[10px] font-black font-mono flex items-center justify-center shrink-0 border border-indigo-100/50 dark:border-indigo-900/40">
+                                {ach.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </span>
+                              <div className="truncate">
+                                <p className="text-xs text-gray-800 dark:text-white font-semibold truncate max-w-[120px]">{ach.name}</p>
+                                <p className="text-[9px] text-gray-400 font-mono tracking-wider">Subordinate</p>
+                              </div>
+                            </div>
+                          </td>
+
+                          {heatmapMode === 'weekly' ? (
+                            <>
+                              {/* Weeks Heatmap grids */}
+                              {weeksCountArr.map((cnt: number, wIdx: number) => {
+                                // Color scheme based on counts (Heat Map density levels)
+                                let cellBg = "bg-gray-100/70 dark:bg-slate-800/40 text-gray-400 dark:text-slate-500 border border-gray-100/60 dark:border-slate-800/10";
+                                
+                                if (cnt === 1) {
+                                  cellBg = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-100/60 dark:border-emerald-900/30 font-bold";
+                                } else if (cnt === 2) {
+                                  cellBg = "bg-emerald-250 text-emerald-900 dark:bg-emerald-800/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/40 font-bold";
+                                } else if (cnt >= 3) {
+                                  cellBg = "bg-gradient-to-br from-emerald-500 to-teal-500 text-white font-extrabold shadow-3xs animate-pulse";
+                                }
+
+                                return (
+                                  <td key={wIdx} className="p-2 text-center">
+                                    <div className={`mx-auto w-14 py-1.5 rounded-lg text-xs font-mono transition-all duration-300 hover:scale-105 ${cellBg}`}>
+                                      {cnt > 0 ? cnt : '-'}
+                                      <span className="block text-[7px] font-sans font-normal opacity-80 mt-0.5">{cnt > 0 ? 'sales' : 'none'}</span>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+
+                              {/* Aggregates columns right boundaries */}
+                              <td className="p-2 text-center border-l border-gray-100 dark:border-slate-800 font-mono text-gray-500 font-semibold text-xs bg-gray-50/15">
+                                {targetVal}
+                              </td>
+                              <td className="p-2 text-center font-mono text-gray-800 dark:text-white font-extrabold text-xs bg-gray-50/15">
+                                {achievedVal}
+                              </td>
+                              <td className="p-2 text-center bg-gray-50/15">
+                                <span className={`inline-block py-0.5 px-2 rounded-xs text-[10px] font-mono font-bold select-none ${
+                                  percentageVal >= 100
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
+                                    : percentageVal >= 50
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30'
+                                }`}>
+                                  {percentageVal.toFixed(0)}%
+                                </span>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              {/* KPI Modes Grids */}
+                              {/* KPI 1: Targets */}
+                              <td className="p-2 text-center">
+                                <span className="font-mono text-xs text-gray-500 dark:text-slate-400 font-semibold">
+                                  {targetVal} units
+                                </span>
+                              </td>
+
+                              {/* KPI 2: Realized */}
+                              <td className="p-2 text-center">
+                                <span className="font-mono text-xs text-gray-800 dark:text-white font-extrabold bg-gray-50 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-gray-100 dark:border-slate-700/40">
+                                  {achievedVal} units
+                                </span>
+                              </td>
+
+                              {/* KPI 3: Target Fulfillment Heatmap Cell */}
+                              {(() => {
+                                // Intensity gradient based on percentage achievement
+                                let intensityStyle = "bg-rose-50 border border-rose-100 text-rose-800 dark:bg-rose-950/10 dark:border-rose-900/20 dark:text-rose-400";
+                                if (percentageVal >= 100) {
+                                  intensityStyle = "bg-emerald-500 text-white border border-emerald-600 shadow-3xs font-extrabold animate-pulse";
+                                } else if (percentageVal >= 80) {
+                                  intensityStyle = "bg-emerald-50 border border-emerald-100 text-emerald-950 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400";
+                                } else if (percentageVal >= 50) {
+                                  intensityStyle = "bg-indigo-50 border border-indigo-100 text-indigo-950 dark:bg-indigo-950/20 dark:border-indigo-900/30 dark:text-indigo-400";
+                                } else if (percentageVal > 0) {
+                                  intensityStyle = "bg-amber-50 border border-amber-100 text-amber-955 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400";
+                                }
+
+                                return (
+                                  <td className="p-2 text-center">
+                                    <div className={`mx-auto w-24 py-1.5 rounded-lg text-xs font-mono font-bold text-center ${intensityStyle}`}>
+                                      {percentageVal.toFixed(0)}%
+                                      <span className="block text-[7px] font-sans font-normal opacity-85">{percentageVal >= 100 ? "Goal Cleared! 🏆" : "Ongoing target"}</span>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
+
+                              {/* KPI 4: Project Value (BDT volume) Heatmap Cell */}
+                              {(() => {
+                                // Density color by sales size (BDT Lakh volume)
+                                let volStyle = "bg-slate-50 text-gray-400 border border-slate-100 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-800/20";
+                                let volText = "0.0 Lakh";
+                                if (totalVolumeBDTVal > 0) {
+                                  volText = `${(totalVolumeBDTVal / 100000).toFixed(1)} Lakh`;
+                                  if (totalVolumeBDTVal >= 10000000) { // 1 Crore
+                                    volStyle = "bg-gradient-to-br from-indigo-500 to-purple-600 text-white border border-indigo-600 shadow-3xs font-bold";
+                                  } else if (totalVolumeBDTVal >= 5000000) { // 50 Lakh
+                                    volStyle = "bg-indigo-50 text-indigo-900 border border-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900/30 font-extrabold";
+                                  } else {
+                                    volStyle = "bg-indigo-50/50 text-indigo-700 border border-indigo-100/30 dark:bg-indigo-950/15 dark:text-indigo-400 dark:border-indigo-900/10";
+                                  }
+                                }
+
+                                return (
+                                  <td className="p-2 text-center">
+                                    <div className={`mx-auto w-24 py-1.5 rounded-lg text-xs font-mono border text-center ${volStyle}`}>
+                                      {volText}
+                                      <span className="block text-[7px] font-sans font-normal opacity-80">sales vol value</span>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
+
+                              {/* KPI 5: Total Earned Commissions Heatmap Cell */}
+                              {(() => {
+                                let comStyle = "bg-slate-50 text-gray-400 border border-slate-100 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-800/20";
+                                if (totalIncentiveBDTVal > 0) {
+                                  if (totalIncentiveBDTVal >= 25000) {
+                                    comStyle = "bg-gradient-to-br from-emerald-500 to-teal-500 text-white border border-emerald-600 shadow-3xs font-bold animate-pulse";
+                                  } else if (totalIncentiveBDTVal >= 10000) {
+                                    comStyle = "bg-emerald-50 text-emerald-950 border border-emerald-150 dark:bg-emerald-950/45 dark:text-emerald-300 dark:border-emerald-900/40 font-extrabold";
+                                  } else {
+                                    comStyle = "bg-emerald-50/50 text-emerald-700 border border-emerald-100/30 dark:bg-emerald-950/15 dark:text-emerald-400 dark:border-emerald-900/10";
+                                  }
+                                }
+
+                                return (
+                                  <td className="p-2 text-center">
+                                    <div className={`mx-auto w-24 py-1.5 rounded-lg text-xs font-mono border text-center ${comStyle}`}>
+                                      {totalIncentiveBDTVal > 0 ? `${totalIncentiveBDTVal.toLocaleString()} ৳` : '-'}
+                                      <span className="block text-[7px] font-sans font-normal opacity-80">earned payout</span>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
+
+                              {/* KPI 6: Extra Milestone Bonuses Heatmap Cell */}
+                              {(() => {
+                                let bStyle = "bg-slate-50 text-gray-400 border border-slate-100 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-800/20";
+                                if (milestoneBonusBDTVal > 0) {
+                                  if (milestoneBonusBDTVal >= 5000) {
+                                    bStyle = "bg-gradient-to-br from-amber-500 to-orange-500 text-white border border-amber-600 shadow-3xs font-extrabold";
+                                  } else {
+                                    bStyle = "bg-amber-50 text-amber-900 border border-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/30 font-bold";
+                                  }
+                                }
+
+                                return (
+                                  <td className="p-2 text-center">
+                                    <div className={`mx-auto w-24 py-1.5 rounded-lg text-xs font-mono border text-center ${bStyle}`}>
+                                      {milestoneBonusBDTVal > 0 ? `+${milestoneBonusBDTVal.toLocaleString()} ৳` : '-'}
+                                      <span className="block text-[7px] font-sans font-normal opacity-80 font-sans">extra adjustments</span>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center py-12 border border-dashed border-gray-150 dark:border-slate-800 rounded-2xl">
+                  <Activity className="w-8 h-8 text-gray-300 mx-auto mb-2 animate-pulse" />
+                  <p className="text-xs font-semibold text-gray-400 dark:text-slate-500">No active subordinates or sales data recorded under your division.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Guide Legend footer inside Section */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-gray-100 dark:border-slate-800 pt-4 text-[10px] text-gray-400 gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono font-semibold uppercase shrink-0 text-gray-400">Color Intensity Legend:</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-xs bg-gray-100 dark:bg-slate-800 border border-gray-200" />
+                  <span>Zero Sales / No target realization</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-xs bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100" />
+                  <span>1 Unit Reservation / Low level KPI</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-xs bg-emerald-250 dark:bg-emerald-800/40 border border-emerald-300" />
+                  <span>2 Units / Mid level KPI</span>
+                </div>
+                <div className="flex items-center gap-1 animate-pulse">
+                  <div className="w-3.5 h-3.5 rounded-xs bg-gradient-to-br from-emerald-500 to-teal-500" />
+                  <span>3+ Units / Goal Cleared! 🔥</span>
+                </div>
+              </div>
+              <div className="font-medium font-mono text-indigo-600 dark:text-indigo-400">
+                *Aggregates calculated based on active chronologically resolved target dates.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Team Leader Subordinates Performance Leaderboard Section */}
+        {(userRole === 'Sales Team Leader' || userRole === 'Admin') && (() => {
+          const bonusRules = data?.bonusRules || {
+            target_90_bonus: 2000,
+            target_100_bonus: 3500,
+            team_target_bonus: 5000
+          };
+
+          const rankedSubordinates = [...achievements].sort((a: any, b: any) => {
+            if (b.percentage !== a.percentage) {
+              return b.percentage - a.percentage;
+            }
+            return b.achieved - a.achieved;
+          });
+
+          const podium1 = rankedSubordinates[0] || null;
+          const podium2 = rankedSubordinates[1] || null;
+          const podium3 = rankedSubordinates[2] || null;
+
+          return (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 space-y-8 shadow-sm">
+              {/* Leaderboard Header */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-50 border border-amber-100 text-amber-700 dark:bg-amber-950/40 dark:border-amber-900/40 dark:text-amber-400 font-sans">
+                    🏆 Performance Honor Roll
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-505 bg-amber-500 animate-pulse" />
+                  <span className="text-[10px] text-gray-400 font-mono font-bold tracking-wide">Dynamic Rank Board</span>
+                </div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-500" /> Top Performers Leaderboard
+                </h2>
+                <p className="text-xs text-gray-400 dark:text-slate-400">
+                  Subordinates ranked by monthly unit allocation targets. Track milestone bonus progression levels of direct developers and executives.
+                </p>
+              </div>
+
+              {rankedSubordinates.length > 0 ? (
+                <div className="space-y-8">
+                  {/* Visual Podium for top 3 */}
+                  <div className="grid md:grid-cols-3 gap-6 pt-4 items-end max-w-4xl mx-auto">
+                    
+                    {/* 2nd Place Podium */}
+                    <div className="order-2 md:order-1 flex flex-col items-center">
+                      {podium2 ? (
+                        <div className="w-full text-center space-y-3">
+                          <div className="relative inline-block">
+                            <div className="w-16 h-16 rounded-full bg-slate-150 bg-slate-100 dark:bg-slate-800 border-2 border-slate-350 flex items-center justify-center font-bold font-mono text-slate-700 dark:text-slate-300 text-xl shadow-xs">
+                              {podium2.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-400 text-white flex items-center justify-center text-xs font-bold border border-white">
+                              2
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-gray-800 dark:text-slate-200 line-clamp-1">{podium2.name}</h4>
+                            <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-400 font-mono mt-0.5">
+                              <Medal className="w-3.5 h-3.5 text-slate-450" />
+                              <span>{podium2.achieved} / {podium2.target} Units ({podium2.percentage.toFixed(0)}%)</span>
+                            </div>
+                          </div>
+                          {/* Slate pedestal */}
+                          <div className="w-full h-16 bg-gradient-to-t from-slate-100/50 to-slate-150/40 dark:from-slate-800/40 dark:to-slate-850/20 rounded-t-xl border-t border-x border-gray-150 dark:border-slate-800 flex items-center justify-center">
+                            <span className="font-mono text-xs font-bold text-slate-500 uppercase tracking-widest">Silver</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-24 border border-dashed border-gray-200 dark:border-slate-800 rounded-xl flex items-center justify-center text-[10px] text-gray-400">
+                          Vacant Position
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 1st Place Podium */}
+                    <div className="order-1 md:order-2 flex flex-col items-center">
+                      {podium1 ? (
+                        <div className="w-full text-center space-y-3 relative -top-3">
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 animate-bounce">
+                            <Crown className="w-7 h-7 text-amber-500" />
+                          </div>
+                          <div className="relative inline-block">
+                            <div className="w-20 h-20 rounded-full bg-amber-50/50 dark:bg-amber-950/20 border-3 border-amber-400 flex items-center justify-center font-bold font-mono text-amber-700 dark:text-amber-450 text-2xl shadow-md">
+                              {podium1.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-black border-2 border-white animate-pulse">
+                              1
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-indigo-950 dark:text-slate-100 line-clamp-1">{podium1.name}</h4>
+                            <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-700 font-mono font-bold mt-0.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400 text-amber-500" />
+                              <span>{podium1.achieved} / {podium1.target} Units ({podium1.percentage.toFixed(0)}%)</span>
+                            </div>
+                          </div>
+                          {/* Gold pedestal */}
+                          <div className="w-full h-24 bg-gradient-to-t from-amber-100/40 to-amber-50/20 dark:from-amber-950/20 dark:to-amber-900/10 rounded-t-xl border-t border-x border-amber-200 dark:border-amber-900/40 flex flex-col items-center justify-center shadow-xs">
+                            <span className="font-mono text-[11px] font-black text-amber-600 uppercase tracking-widest">Champion</span>
+                            <span className="text-[9px] text-amber-500 font-sans tracking-wide">Top Rank Spot</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-24 border border-dashed border-gray-200 dark:border-slate-800 rounded-xl flex items-center justify-center text-[10px] text-gray-400">
+                          Vacant Position
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3rd Place Podium */}
+                    <div className="order-3 md:order-3 flex flex-col items-center">
+                      {podium3 ? (
+                        <div className="w-full text-center space-y-3">
+                          <div className="relative inline-block">
+                            <div className="w-16 h-16 rounded-full bg-amber-50/10 dark:bg-amber-950/10 border-2 border-amber-605 border-amber-600 flex items-center justify-center font-bold font-mono text-amber-800 dark:text-amber-450 text-xl shadow-xs">
+                              {podium3.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-700 text-white flex items-center justify-center text-xs font-bold border border-white">
+                              3
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-gray-800 dark:text-slate-200 line-clamp-1">{podium3.name}</h4>
+                            <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-400 font-mono mt-0.5">
+                              <Medal className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{podium3.achieved} / {podium3.target} Units ({podium3.percentage.toFixed(0)}%)</span>
+                            </div>
+                          </div>
+                          {/* Bronze pedestal */}
+                          <div className="w-full h-12 bg-gradient-to-t from-amber-50/30 to-amber-100/10 dark:from-amber-955 dark:from-amber-950/10 dark:to-amber-950/5 rounded-t-xl border-t border-x border-amber-100 dark:border-amber-950 flex items-center justify-center">
+                            <span className="font-mono text-xs font-bold text-amber-750 text-amber-800 uppercase tracking-widest">Bronze</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-24 border border-dashed border-gray-200 dark:border-slate-800 rounded-xl flex items-center justify-center text-[10px] text-gray-400">
+                          Vacant Position
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* Complete Rankings List & Approaching bonus tiers indicators */}
+                  <div className="space-y-3.5 pt-4">
+                    <h3 className="text-xs font-bold text-gray-400 font-mono tracking-wider uppercase">Active Subordinate Honors & Bonus Tiers</h3>
+                    <div className="divide-y divide-gray-100 dark:divide-slate-800 border border-gray-100 dark:border-slate-800 rounded-2xl overflow-hidden bg-gray-50/15 dark:bg-slate-900/40">
+                      {rankedSubordinates.map((exec: any, index: number) => {
+                        const target = exec.target || 1;
+                        const achieved = exec.achieved || 0;
+                        const percentage = exec.percentage || 0;
+
+                        // Calculate custom visual badges & status description for bonus tiers
+                        let bonusText = "";
+                        let approachStatus = "";
+                        let barColor = "bg-rose-500";
+                        let badgeStyle = "bg-rose-50 text-rose-700 border border-rose-100 dark:bg-rose-955 dark:bg-rose-950/20 dark:text-rose-450 dark:border-rose-900/30";
+                        let iconEl = <Target className="w-3.5 h-3.5 text-rose-500 shrink-0" />;
+
+                        if (percentage >= 100) {
+                          bonusText = `🏆 Max Target Bonus Unlocked!`;
+                          approachStatus = `Earned +${bonusRules.target_100_bonus.toLocaleString()} ৳ milestone award!`;
+                          barColor = "bg-gradient-to-r from-amber-500 to-emerald-500";
+                          badgeStyle = "bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/30 font-extrabold animate-pulse";
+                          iconEl = <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
+                        } else if (percentage >= 90) {
+                          const unitsToMax = Math.max(1, target - achieved);
+                          bonusText = `⭐ 90% Target Bonus Unlocked!`;
+                          approachStatus = `Earned +${bonusRules.target_90_bonus.toLocaleString()} ৳ milestone. Only ${unitsToMax} unit${unitsToMax > 1 ? 's' : ''} left for Max Bonus (+${bonusRules.target_100_bonus.toLocaleString()} ৳)!`;
+                          barColor = "bg-emerald-500";
+                          badgeStyle = "bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30 font-bold";
+                          iconEl = <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+                        } else if (percentage >= 80) {
+                          const reqFlats = Math.max(1, Math.ceil(target * 0.9) - achieved);
+                          bonusText = `⚡ Approaching Bonus Tier (80%+)`;
+                          approachStatus = `Only ${reqFlats} flat reservation${reqFlats > 1 ? 's' : ''} to unlock the ${bonusRules.target_90_bonus.toLocaleString()} ৳ Bonus Tier!`;
+                          barColor = "bg-indigo-500 animate-pulse";
+                          badgeStyle = "bg-indigo-50 text-indigo-700 border border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30 font-semibold";
+                          iconEl = <Star className="w-3.5 h-3.5 text-indigo-500 shrink-0" />;
+                        } else if (percentage >= 50) {
+                          const reqFlats = Math.max(1, Math.ceil(target * 0.9) - achieved);
+                          bonusText = `📈 Moderate Progress`;
+                          approachStatus = `Needs ${reqFlats} more units for 90% bonus qualification (Needs ${Math.ceil(target * 0.9)} units).`;
+                          barColor = "bg-indigo-400";
+                          badgeStyle = "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-800/30";
+                        } else {
+                          const reqFlats = Math.max(1, Math.ceil(target * 0.9) - achieved);
+                          bonusText = `🎯 Base Building`;
+                          approachStatus = `Accelerate bookings! Only ${reqFlats} more flats to hit first bonus threshold zone.`;
+                          barColor = "bg-rose-400";
+                          badgeStyle = "bg-rose-50/50 text-rose-600 border border-rose-100/40 dark:bg-rose-950/10 dark:text-rose-400 dark:border-rose-900/10";
+                        }
+
+                        return (
+                          <div key={exec.id || exec.name} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white dark:hover:bg-slate-850/10 transition">
+                            {/* Rank and identity profile */}
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-xs font-black text-gray-400 w-5 flex items-center justify-center shrink-0">
+                                #{index + 1}
+                              </span>
+                              <div className="w-9 h-9 rounded-full bg-slate-50 dark:bg-slate-800 border border-gray-150 dark:border-slate-800 flex items-center justify-center text-xs font-bold text-gray-700 dark:text-slate-350 font-mono shrink-0">
+                                {exec.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                  {exec.name}
+                                  {index === 0 && <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/25 shrink-0" />}
+                                </h4>
+                                <p className="text-[9px] text-gray-400 font-mono">Month Volume: {((exec.totalVolumeBDT || 0) / 100000).toFixed(1)}L BDT</p>
+                              </div>
+                            </div>
+
+                            {/* Bar charts metrics */}
+                            <div className="flex-1 max-w-sm space-y-1">
+                              <div className="flex items-center justify-between text-[10px] font-mono font-medium">
+                                <span className="text-gray-400">Target Progress</span>
+                                <span className="text-gray-800 dark:text-slate-200 font-bold">{achieved} of {target} Units ({percentage.toFixed(0)}%)</span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${Math.min(percentage, 100)}%` }} />
+                              </div>
+                              <span className="block text-[9px] text-indigo-650 dark:text-indigo-400 font-medium font-sans">
+                                {approachStatus}
+                              </span>
+                            </div>
+
+                            {/* Tier Indicator status */}
+                            <div className="flex items-center">
+                              <div className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-medium text-[10px] select-none border shadow-3xs ${badgeStyle}`}>
+                                {iconEl}
+                                <span className="font-sans font-bold">{bonusText}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 border border-dashed border-gray-150 dark:border-slate-800 rounded-2xl">
+                  <Trophy className="w-8 h-8 text-gray-300 mx-auto mb-2 animate-pulse" />
+                  <p className="text-xs font-semibold text-gray-400 dark:text-slate-500">No subordinate data or sales structures configured under division.</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Chronological Activity Timeline Component */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 p-6 space-y-6">
@@ -607,7 +1175,7 @@ export default function DashboardView({ authToken }: DashboardProps) {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Team wise break up */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 space-y-4 flex flex-col justify-between">
           <div>
@@ -657,6 +1225,72 @@ export default function DashboardView({ authToken }: DashboardProps) {
                   </div>
                 );
               })
+            )}
+          </div>
+        </div>
+
+        {/* Top 5 Performers Widget */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 space-y-4 flex flex-col justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
+              Top Performers ({execAchievementsPeriod || "Latest Month"})
+            </h3>
+            <p className="text-xs text-gray-500">Leading agents ranked by total monthly incentive payouts.</p>
+          </div>
+
+          <div className="min-h-[290px] max-h-[350px] overflow-y-auto pr-1 space-y-3 pt-2">
+            {achievements.length === 0 ? (
+              <div className="text-center py-12 text-gray-400 text-xs font-mono">
+                No active performance records.
+              </div>
+            ) : (
+              [...achievements]
+                .sort((a, b) => (b.totalIncentiveBDT || 0) - (a.totalIncentiveBDT || 0))
+                .slice(0, 5)
+                .map((ach: any, idx: number) => {
+                  const rankColors = [
+                    { bg: "bg-amber-50 border-amber-250 text-amber-600 dark:bg-amber-950/20 dark:border-amber-900/35", icon: <Trophy className="w-3.5 h-3.5" /> },
+                    { bg: "bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-800/35 dark:border-slate-750", icon: <Medal className="w-3.5 h-3.5" /> },
+                    { bg: "bg-orange-50 border-orange-200 text-orange-600 dark:bg-orange-950/20 dark:border-orange-900/35", icon: <Award className="w-3.5 h-3.5" /> },
+                  ];
+
+                  const rankStyle = rankColors[idx] || {
+                    bg: "bg-gray-55/60 border-gray-150 text-gray-500",
+                    icon: <span className="font-mono text-[10px] font-bold">{idx + 1}</span>
+                  };
+
+                  return (
+                    <div key={ach.id || ach.name} className="flex items-center justify-between p-2.5 rounded-2xl border border-gray-50 hover:bg-gray-50/65 dark:hover:bg-slate-850 transition duration-200 group">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Rank Badge */}
+                        <div className={`w-6.5 h-6.5 rounded-lg border flex items-center justify-center shrink-0 ${rankStyle.bg}`}>
+                          {rankStyle.icon}
+                        </div>
+
+                        {/* Executive Info */}
+                        <div className="truncate">
+                          <p className="font-bold text-gray-800 dark:text-gray-100 text-xs truncate group-hover:text-indigo-650 transition">
+                            {ach.name}
+                          </p>
+                          <span className="text-[10px] text-gray-400 font-mono">
+                            {ach.achieved || 0} unit(s) sold
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payoff Column */}
+                      <div className="text-right shrink-0">
+                        <p className="font-bold font-mono text-xs text-emerald-650 leading-none mb-0.5">
+                          {(ach.totalIncentiveBDT || 0).toLocaleString()} ৳
+                        </p>
+                        <p className="text-[9px] text-gray-400 font-mono leading-none">
+                          +{(ach.milestoneBonusBDT || 0).toLocaleString()} bonus
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
             )}
           </div>
         </div>

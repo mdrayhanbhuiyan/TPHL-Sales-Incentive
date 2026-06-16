@@ -1,3 +1,5 @@
+
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -6,6 +8,9 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { initializeApp } from 'firebase/app';
+import { initializeFirestore, doc, setDoc, getDocs, collection } from 'firebase/firestore';
+
 import { 
   User, 
   Project, 
@@ -21,8 +26,6 @@ import {
   ProjectOnSale,
   UnitRegistration
 } from '../types';
-
-const STORE_PATH = path.join(process.cwd(), 'db-store.json');
 
 export interface DatabaseStore {
   users: User[];
@@ -104,64 +107,266 @@ const DEFAULT_STORE: DatabaseStore = {
   ]
 };
 
-// Initialize or read the store
-export function getStore(): DatabaseStore {
-  try {
-    if (!fs.existsSync(STORE_PATH)) {
-      writeStore(DEFAULT_STORE);
-      recalculateAllIncentivesDirect(DEFAULT_STORE);
-      return DEFAULT_STORE;
-    }
-    const data = fs.readFileSync(STORE_PATH, 'utf-8');
-    const store = JSON.parse(data);
-    
-    // Ensure all required collections exist
-    if (!store.users) store.users = [];
-    if (!store.projects) store.projects = [];
-    if (!store.salesTeams) store.salesTeams = [];
-    if (!store.teamProjects) store.teamProjects = [];
-    if (!store.salesExecutives) store.salesExecutives = [];
-    if (!store.incentiveRules) store.incentiveRules = [];
-    if (!store.bonusRules) store.bonusRules = DEFAULT_STORE.bonusRules;
-    if (!store.sales) store.sales = [];
-    if (!store.salesIncentives) store.salesIncentives = [];
-    if (!store.auditLogs) store.auditLogs = [];
-    if (!store.notifications) store.notifications = [];
-    if (!store.projectsOnSale) store.projectsOnSale = [];
-    if (!store.unitRegistrations) store.unitRegistrations = [];
-    
-    // Migration: safety conversion of executive targets from BDT values to physical unit numbers
-    let migrated = false;
-    store.salesExecutives.forEach((exec: any) => {
-      if (exec.target > 1000) {
-        if (exec.id === "exec-rahim") exec.target = 3;
-        else if (exec.id === "exec-karim") exec.target = 2;
-        else if (exec.id === "exec-sultana") exec.target = 2;
-        else exec.target = Math.max(Math.round(exec.target / 500000), 2);
-        migrated = true;
-      }
-    });
-    
-    // Recalculate just in case or if migrated
-    if (migrated || (store.salesIncentives.length === 0 && store.sales.length > 0)) {
-      recalculateAllIncentivesDirect(store);
-      if (migrated) {
-        writeStore(store);
-      }
-    }
-    return store;
-  } catch (err) {
-    console.error("Failed to read database store:", err);
-    return DEFAULT_STORE;
+// Global in-memory cache for fast synchronous access
+let cachedStore: DatabaseStore | null = null;
+let db: any = null;
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   }
 }
 
-export function writeStore(store: DatabaseStore): void {
-  try {
-    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
-  } catch (err) {
-    console.error("Failed to write to database store:", err);
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: null,
+      isAnonymous: null,
+      tenantId: null,
+      providerInfo: []
+    },
+    operationType,
+    path
+  };
+  console.error('[db.ts] Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Initialize Firebase App & Firestore Client Async/Defensively
+try {
+  let config: any = null;
+  const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(firebaseConfigPath)) {
+    config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+  } else if (process.env.FIREBASE_CONFIG) {
+    try {
+      config = JSON.parse(process.env.FIREBASE_CONFIG);
+    } catch (e) {
+      console.error("[db.ts] Failed to parse FIREBASE_CONFIG environment variable:", e);
+    }
+  } else if (process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY) {
+    config = {
+      projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+      appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID,
+      apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN,
+      firestoreDatabaseId: process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    };
   }
+
+  if (config) {
+    if (!config.firestoreDatabaseId) {
+      config.firestoreDatabaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || "ai-studio-68bd67d0-7c65-4254-ae2d-d9f4a64152d6";
+    }
+    const app = initializeApp(config);
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, config.firestoreDatabaseId);
+    console.log("[db.ts] Firebase successfully initialized with Firestore Database ID:", config.firestoreDatabaseId);
+  } else {
+    console.warn("[db.ts] Firebase configuration not found (neither firebase-applet-config.json nor environment variables set). running in offline fallback mode.");
+  }
+} catch (err) {
+  console.error("[db.ts] Failed to initialize Firebase:", err);
+}
+
+// Helper to recursively remove all undefined properties from an object so Firestore doesn't reject them
+function removeUndefined(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(item => removeUndefined(item));
+  } else if (obj !== null && typeof obj === 'object') {
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      if (obj[key] !== undefined) {
+        newObj[key] = removeUndefined(obj[key]);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+
+// Firestore Direct Write helper
+async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
+  // Always keep local db-store.json synchronized so offline backups are updated instantly
+  try {
+    const localDbPath = path.join(process.cwd(), 'db-store.json');
+    fs.writeFileSync(localDbPath, JSON.stringify(store, null, 2), 'utf-8');
+    console.log("[db.ts] Offline backup successfully recorded in local db-store.json");
+  } catch (err) {
+    // Fail silently on read-only environments (e.g. Vercel deployment)
+  }
+
+  if (!db) return;
+  try {
+    const keys: (keyof DatabaseStore)[] = [
+      'users',
+      'projects',
+      'salesTeams',
+      'teamProjects',
+      'salesExecutives',
+      'incentiveRules',
+      'bonusRules',
+      'sales',
+      'salesIncentives',
+      'auditLogs',
+      'notifications',
+      'projectsOnSale',
+      'unitRegistrations'
+    ];
+
+    const sanitizedStore = removeUndefined(store);
+
+    for (const key of keys) {
+      const docRef = doc(db, 'sales_portal_data', key);
+      await setDoc(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
+    }
+    console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
+  } catch (err) {
+    console.error("[db.ts] Failed to save state to Firebase Firestore:", err);
+    handleFirestoreError(err, OperationType.WRITE, 'sales_portal_data');
+  }
+}
+
+// Asynchronously bootstrap the Firestore state at server boot-up
+export async function initFirestore(): Promise<void> {
+  const localDbPath = path.join(process.cwd(), 'db-store.json');
+
+  if (!db) {
+    console.warn("[db.ts] Firestore is not connected. Attempting local db-store.json data checkout...");
+    if (fs.existsSync(localDbPath)) {
+      try {
+        cachedStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+        console.log("[db.ts] Successfully checked out existing data from db-store.json!");
+      } catch (err) {
+        console.error("[db.ts] Failed to parse local db-store.json, creating DEFAULT_STORE fallback:", err);
+        cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+      }
+    } else {
+      cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+    }
+    return;
+  }
+
+  try {
+    console.log("[db.ts] Pre-loading sales portal state from Firebase Firestore...");
+    const colRef = collection(db, 'sales_portal_data');
+    const snapshot = await getDocs(colRef).catch(err => {
+      handleFirestoreError(err, OperationType.GET, 'sales_portal_data');
+      throw err;
+    });
+    
+    const dbData: Partial<DatabaseStore> = {};
+    snapshot.forEach(docSnap => {
+      const id = docSnap.id;
+      const docData = docSnap.data();
+      if (docData && docData.data !== undefined) {
+        dbData[id as keyof DatabaseStore] = docData.data;
+      }
+    });
+
+    if (dbData.users && dbData.users.length > 0) {
+      console.log("[db.ts] Found existing sales portal database in Firebase Firestore!");
+      cachedStore = {
+        users: dbData.users,
+        projects: dbData.projects || [],
+        salesTeams: dbData.salesTeams || [],
+        teamProjects: dbData.teamProjects || [],
+        salesExecutives: dbData.salesExecutives || [],
+        incentiveRules: dbData.incentiveRules || [],
+        bonusRules: dbData.bonusRules || DEFAULT_STORE.bonusRules,
+        sales: dbData.sales || [],
+        salesIncentives: dbData.salesIncentives || [],
+        auditLogs: dbData.auditLogs || [],
+        notifications: dbData.notifications || [],
+        projectsOnSale: dbData.projectsOnSale || [],
+        unitRegistrations: dbData.unitRegistrations || []
+      };
+
+      // Perform migrations or syncs if needed
+      let migrated = false;
+      cachedStore.salesExecutives.forEach((exec: any) => {
+        if (exec.target > 1000) {
+          if (exec.id === "exec-rahim") exec.target = 3;
+          else if (exec.id === "exec-karim") exec.target = 2;
+          else if (exec.id === "exec-sultana") exec.target = 2;
+          else exec.target = Math.max(Math.round(exec.target / 500000), 2);
+          migrated = true;
+        }
+      });
+      if (migrated) {
+        await writeStoreToFirestore(cachedStore);
+      }
+    } else {
+      console.log("[db.ts] Firebase Firestore is empty. Seeding Firestore from local db-store.json if available...");
+      if (fs.existsSync(localDbPath)) {
+        try {
+          cachedStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+          console.log("[db.ts] Seeding Firestore with active data from local db-store.json...");
+        } catch (err) {
+          console.error("[db.ts] Failed to parse db-store.json for seeding, using default state:", err);
+          cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+        }
+      } else {
+        cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+      }
+      await writeStoreToFirestore(cachedStore);
+    }
+  } catch (err) {
+    console.error("[db.ts] Error pre-loading from Firebase Firestore. Falling back to local offline mode...", err);
+    if (fs.existsSync(localDbPath)) {
+      try {
+        cachedStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+      } catch (e) {
+        cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+      }
+    } else {
+      cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+    }
+  }
+}
+
+// Synchronously serve from active in-memory cache (populated from Firestore on boot)
+export function getStore(): DatabaseStore {
+  if (!cachedStore) {
+    console.warn("[db.ts] getStore called before Firestore initialization! Loading default state into memory.");
+    cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+  }
+  return cachedStore;
+}
+
+// Synchronously update cache, and trigger direct async/awaited Firestore save
+export function writeStore(store: DatabaseStore): void {
+  cachedStore = store;
+  
+  writeStoreToFirestore(store).catch(err => {
+    console.error("[db.ts] Direct save to Firestore failed:", err);
+  });
 }
 
 // Log actions
@@ -237,14 +442,12 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
       return { dateStr: s.sale_date, isRegistered: false };
     }
     const unitReg = store.unitRegistrations?.find(r => r.project_on_sale_id === s.project_on_sale_id && r.unit_name === s.unit_name);
-    const isRegistered = unitReg ? (unitReg.registered === 'Yes') : (proj.registration !== 'No');
+    const isRegistered = unitReg ? (unitReg.registered === 'Yes') : false;
 
     let dateStr = s.sale_date;
     if (isRegistered) {
       if (unitReg && unitReg.registered === 'Yes' && unitReg.registration_date) {
         dateStr = unitReg.registration_date;
-      } else if (proj.registration === 'Yes' && proj.first_sale_date) {
-        dateStr = proj.first_sale_date;
       }
     }
     return { dateStr, isRegistered };
@@ -275,7 +478,21 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     const year = pDate.getFullYear();
 
     // Use either explicit target or project share
-    const saleVolume = proj.land_share_amount; 
+    let saleVolume = proj.land_share_amount;
+    if (sale.project_on_sale_id && store.projectsOnSale) {
+      const pos = store.projectsOnSale.find(p => p.id === sale.project_on_sale_id);
+      if (pos) {
+        if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
+          saleVolume = pos.land_share_price;
+        }
+        if (pos.unit_configs) {
+          const letter = sale.unit_name.slice(-1).toUpperCase();
+          if (pos.unit_configs[letter] !== undefined) {
+            saleVolume = pos.unit_configs[letter].land_share;
+          }
+        }
+      }
+    }
 
     const key = `${exec.id}_${month}_${year}`;
     if (!execSalesGroup[key]) {
@@ -308,8 +525,45 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     const year = pDate.getFullYear();
     const isRegistered = calc.isRegistered;
 
-    // Find rule for this project. If none exists, create a default ruleset.
-    let rule = store.incentiveRules.find(r => r.project_id === sale.project_id);
+    // Resolve sold unit size and project on sale details first
+    let soldUnitSizeStr = sale.unit_measure || "";
+    let soldUnitSizeNum = parseInt(soldUnitSizeStr) || 0;
+    const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => p.id === sale.project_on_sale_id) : null;
+    if (pos) {
+      if (pos.unit_configs) {
+        const letter = sale.unit_name.slice(-1).toUpperCase();
+        if (pos.unit_configs[letter] !== undefined) {
+          soldUnitSizeNum = pos.unit_configs[letter].size;
+          soldUnitSizeStr = `${soldUnitSizeNum} SFT`;
+        } else {
+          soldUnitSizeStr = pos.flat_unit_size;
+          soldUnitSizeNum = parseInt(pos.flat_unit_size) || 0;
+        }
+      } else {
+        soldUnitSizeStr = pos.flat_unit_size;
+        soldUnitSizeNum = parseInt(pos.flat_unit_size) || 0;
+      }
+    }
+
+    const normalizeSize = (s: string | number) => {
+      return String(s).toLowerCase().replace(/\s+/g, '').replace(/sft/g, '');
+    };
+    const soldSizeNormalized = normalizeSize(soldUnitSizeNum || soldUnitSizeStr);
+
+    // Find rule matching unit size or Development Project Directory Name
+    let rule = store.incentiveRules.find(r => {
+      const rp = store.projects.find(p => p.id === r.project_id);
+      if (!rp) return false;
+      const rpSizeNormalized = normalizeSize(rp.unit_measure);
+      const rpNameNormalized = normalizeSize(rp.project_name);
+      return (rpSizeNormalized !== "" && rpSizeNormalized === soldSizeNormalized) ||
+             (rpNameNormalized !== "" && rpNameNormalized === soldSizeNormalized);
+    });
+
+    if (!rule) {
+      rule = store.incentiveRules.find(r => r.project_id === sale.project_id);
+    }
+
     if (!rule) {
       rule = {
         id: `rule-${crypto.randomUUID()}`,
@@ -339,19 +593,32 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
     else if (sNum === 6) basePercent = rule.sale_6_percent;
     else if (sNum === 7) basePercent = rule.sale_7_percent;
 
+    // Resolve land share price of xyz (the project/unit on sale)
+    let currentLandShare = proj.land_share_amount;
+    if (pos) {
+      if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
+        currentLandShare = pos.land_share_price;
+      }
+      if (pos.unit_configs) {
+        const letter = sale.unit_name.slice(-1).toUpperCase();
+        if (pos.unit_configs[letter] !== undefined) {
+          currentLandShare = pos.unit_configs[letter].land_share;
+        }
+      }
+    }
+
     // Base Incentive
-    const baseIncentive = isRegistered ? proj.land_share_amount * (basePercent / 100) : 0;
+    const baseIncentive = isRegistered ? currentLandShare * (basePercent / 100) : 0;
 
     // Floor Bonus
     let floorBonus = 0;
     if (isRegistered) {
-      const pos = sale.project_on_sale_id ? store.projectsOnSale?.find(p => p.id === sale.project_on_sale_id) : null;
       const totalFloors = pos ? pos.floor_number : proj.floors;
 
       if (sale.floor_number === 1) {
-        floorBonus = proj.land_share_amount * (rule.first_floor_bonus_percent / 100);
+        floorBonus = currentLandShare * (rule.first_floor_bonus_percent / 100);
       } else if (sale.floor_number === totalFloors) {
-        floorBonus = proj.land_share_amount * (rule.top_floor_bonus_percent / 100);
+        floorBonus = currentLandShare * (rule.top_floor_bonus_percent / 100);
       }
     }
 
@@ -442,4 +709,59 @@ export function recalculateAllIncentives(): void {
   const store = getStore();
   recalculateAllIncentivesDirect(store);
   writeStore(store);
+}
+
+export async function getLiveFirestoreBackup(): Promise<DatabaseStore> {
+  const localDbPath = path.join(process.cwd(), 'db-store.json');
+  if (!db) {
+    if (fs.existsSync(localDbPath)) {
+      try {
+        return JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+      } catch (err) {
+        // Fallback below
+      }
+    }
+    return getStore();
+  }
+
+  try {
+    console.log("[db.ts] Fetching raw live backup from Firebase Firestore directly...");
+    const colRef = collection(db, 'sales_portal_data');
+    const snapshot = await getDocs(colRef).catch(err => {
+      handleFirestoreError(err, OperationType.GET, 'sales_portal_data');
+      throw err;
+    });
+    
+    const dbData: Partial<DatabaseStore> = {};
+    snapshot.forEach(docSnap => {
+      const id = docSnap.id;
+      const docData = docSnap.data();
+      if (docData && docData.data !== undefined) {
+        dbData[id as keyof DatabaseStore] = docData.data;
+      }
+    });
+
+    if (dbData.users && dbData.users.length > 0) {
+      return {
+        users: dbData.users,
+        projects: dbData.projects || [],
+        salesTeams: dbData.salesTeams || [],
+        teamProjects: dbData.teamProjects || [],
+        salesExecutives: dbData.salesExecutives || [],
+        incentiveRules: dbData.incentiveRules || [],
+        bonusRules: dbData.bonusRules || DEFAULT_STORE.bonusRules,
+        sales: dbData.sales || [],
+        salesIncentives: dbData.salesIncentives || [],
+        auditLogs: dbData.auditLogs || [],
+        notifications: dbData.notifications || [],
+        projectsOnSale: dbData.projectsOnSale || [],
+        unitRegistrations: dbData.unitRegistrations || []
+      };
+    } else {
+      return getStore();
+    }
+  } catch (err) {
+    console.error("[db.ts] Failed to fetch live backup from Firestore directly, falling back to local store:", err);
+    return getStore();
+  }
 }

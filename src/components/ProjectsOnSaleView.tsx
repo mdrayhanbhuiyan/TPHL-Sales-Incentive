@@ -30,6 +30,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { Project, ProjectOnSale } from '../types';
+import { useToast } from './Toast';
 
 interface ProjectsOnSaleViewProps {
   authToken: string;
@@ -37,6 +38,7 @@ interface ProjectsOnSaleViewProps {
 }
 
 export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSaleViewProps) {
+  const { toast } = useToast();
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +67,9 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
     project_id: '',
     floor_number: 1,
     units_per_floor: 2,
+    land_share_price: '' as string | number,
   });
+  const [unitConfigs, setUnitConfigs] = useState<{ [key: string]: { size: number; land_share: number } }>({});
 
   // Details popover state
   const [selectedProject, setSelectedProject] = useState<ProjectOnSale | null>(null);
@@ -146,12 +150,21 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
 
   const handleOpenCreateModal = () => {
     setEditingId(null);
+    const defaultProjId = directoryProjects[0]?.id || '';
+    const dirProj = directoryProjects.find(p => p.id === defaultProjId);
+    const defaultLandShare = dirProj ? dirProj.land_share_amount : 500000;
     setFormData({
       project_name: '',
-      flat_unit_size: '',
-      project_id: directoryProjects[0]?.id || '',
+      flat_unit_size: '1200 SFT',
+      project_id: defaultProjId,
       floor_number: 9,
       units_per_floor: 2,
+      land_share_price: defaultLandShare,
+    });
+    
+    setUnitConfigs({
+      'A': { size: 1200, land_share: defaultLandShare },
+      'B': { size: 1200, land_share: defaultLandShare },
     });
     setIsModalOpen(true);
   };
@@ -164,8 +177,79 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       project_id: project.project_id,
       floor_number: project.floor_number,
       units_per_floor: project.units_per_floor,
+      land_share_price: project.land_share_price !== undefined ? project.land_share_price : '',
     });
+    
+    const defaultConfigs: { [key: string]: { size: number; land_share: number } } = {};
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    const units_per_floor = project.units_per_floor || 2;
+    const dirProj = directoryProjects.find(p => p.id === project.project_id);
+    const defaultLandShare = project.land_share_price !== undefined ? project.land_share_price : (dirProj ? dirProj.land_share_amount : 500000);
+    const defaultSize = parseInt(project.flat_unit_size) || 1200;
+
+    for (let u = 0; u < units_per_floor; u++) {
+      const letter = letters[u] || String.fromCharCode(65 + u);
+      if (project.unit_configs && project.unit_configs[letter]) {
+        defaultConfigs[letter] = { ...project.unit_configs[letter] };
+      } else {
+        defaultConfigs[letter] = { size: defaultSize, land_share: defaultLandShare };
+      }
+    }
+    setUnitConfigs(defaultConfigs);
     setIsModalOpen(true);
+  };
+
+  const handleProjectIdChange = (projId: string) => {
+    const dirProj = directoryProjects.find(p => p.id === projId);
+    const defaultLandShare = dirProj ? dirProj.land_share_amount : 500000;
+    setFormData(prev => ({ 
+      ...prev, 
+      project_id: projId,
+      land_share_price: defaultLandShare
+    }));
+    
+    const updatedConfigs = { ...unitConfigs };
+    for (const letter of Object.keys(updatedConfigs)) {
+      updatedConfigs[letter].land_share = defaultLandShare;
+    }
+    setUnitConfigs(updatedConfigs);
+  };
+
+  const handleLandSharePriceChange = (priceVal: string | number) => {
+    setFormData(prev => ({ ...prev, land_share_price: priceVal }));
+    const numPrice = Number(priceVal) || 0;
+    const updatedConfigs = { ...unitConfigs };
+    for (const letter of Object.keys(updatedConfigs)) {
+      updatedConfigs[letter].land_share = numPrice;
+    }
+    setUnitConfigs(updatedConfigs);
+  };
+
+  const handleUnitsPerFloorChange = (newVal: number) => {
+    setFormData(prev => ({ ...prev, units_per_floor: newVal }));
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    const newConfigs = { ...unitConfigs };
+    
+    const dirProj = directoryProjects.find(p => p.id === formData.project_id);
+    const defaultLandShare = formData.land_share_price !== '' && formData.land_share_price !== undefined 
+      ? Number(formData.land_share_price) 
+      : (dirProj ? dirProj.land_share_amount : 500000);
+    const defaultSize = parseInt(formData.flat_unit_size) || 1200;
+
+    for (let u = 0; u < newVal; u++) {
+      const letter = letters[u] || String.fromCharCode(65 + u);
+      if (!newConfigs[letter]) {
+        newConfigs[letter] = { size: defaultSize, land_share: defaultLandShare };
+      }
+    }
+    
+    for (const letter of Object.keys(newConfigs)) {
+      const index = letters.indexOf(letter);
+      if (index === -1 || index >= newVal) {
+        delete newConfigs[letter];
+      }
+    }
+    setUnitConfigs(newConfigs);
   };
 
   const handleDelete = async (id: string) => {
@@ -176,14 +260,17 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
+        toast.success("Pre-sale campaign deleted successfully.");
         fetchData();
       } else {
         const err = await res.json();
         alert(err.error || "Failed to delete.");
+        toast.error(err.error || "Failed to delete pre-sale campaign.");
       }
     } catch (e) {
       console.error(e);
       alert("Error occurred on deletion.");
+      toast.error("An error occurred during deletion.");
     }
   };
 
@@ -191,6 +278,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
     e.preventDefault();
     if (!formData.project_name || !formData.flat_unit_size || !formData.project_id) {
       alert("Please fill all required inputs.");
+      toast.warning("Please fill all required inputs.");
       return;
     }
 
@@ -200,6 +288,8 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       project_id: formData.project_id,
       floor_number: Number(formData.floor_number || 1),
       units_per_floor: Number(formData.units_per_floor || 1),
+      land_share_price: formData.land_share_price !== '' ? Number(formData.land_share_price) : undefined,
+      unit_configs: unitConfigs,
     };
 
     try {
@@ -216,15 +306,18 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       });
 
       if (res.ok) {
+        toast.success(editingId ? "Pre-sale campaign updated successfully!" : "Pre-sale campaign launched successfully!");
         setIsModalOpen(false);
         fetchData();
       } else {
         const err = await res.json();
         alert(err.error || "Failed to save pre-sale project.");
+        toast.error(err.error || "Failed to save pre-sale campaign.");
       }
     } catch (err) {
       console.error(err);
       alert("Server connection failure.");
+      toast.error("Internal server connection failure.");
     }
   };
 
@@ -344,9 +437,11 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       if (!response.ok) {
         const err = await response.json();
         setCsvError(err.error || "Failed to process bulk import setup.");
+        toast.error(err.error || "Failed to bulk import pre-sale campaigns.");
       } else {
         const result = await response.json();
         setImportSuccessMessage(`Successfully registered ${result.count || parsedData.length} pre-sale project(s)!`);
+        toast.success(`Successfully imported ${result.count || parsedData.length} pre-sale campaigns!`);
         setParsedData([]);
         setCsvFile(null);
         fetchData();
@@ -354,6 +449,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
     } catch (err) {
       console.error(err);
       setCsvError("Connecting to servers failed.");
+      toast.error("Connecting to server failed.");
     } finally {
       setImporting(false);
     }
@@ -391,11 +487,13 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       if (!res.ok) {
         const data = await res.json();
         alert(data.error || "Failed to update registration record.");
+        toast.error(data.error || "Failed to update deed registration status.");
       } else {
         const updatedReg = await res.json();
         // Update local status in unitRegistrations state
         setUnitRegistrations(prev => prev.map(r => r.id === regId ? updatedReg : r));
         setRegSuccessMessage("Deed registration status successfully synchronized!");
+        toast.success("Deed registration status successfully synchronized!");
       }
     } catch (err) {
       console.error(err);
@@ -743,8 +841,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                       </div>
                     ) : (
                       <div className="space-y-4 text-xs">
-                        
-                        {/* Unit Title and Current Status */}
+                                               {/* Unit Title and Current Status */}
                         <div className="flex items-center justify-between">
                           <div>
                             <h4 className="text-sm font-bold text-gray-900 dark:text-white">Unit {selectedUnit} Properties</h4>
@@ -765,6 +862,38 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                                 Vacant Available
                               </span>
                             )}
+                          </div>
+                        </div>
+
+                        {/* High Fidelity Dynamic SFT & Land Share Display */}
+                        <div className="bg-white dark:bg-slate-900/60 p-3 rounded-2xl border border-gray-150/50 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono leading-tight">
+                          <div>
+                            <span className="text-[9px] text-gray-400 uppercase block font-sans font-bold">Unit Level Type Layout</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                              {(() => {
+                                const letter = selectedUnit.slice(-1).toUpperCase();
+                                if (selectedProject.unit_configs && selectedProject.unit_configs[letter]) {
+                                  return `${selectedProject.unit_configs[letter].size} SFT (Type ${letter})`;
+                                }
+                                return `${selectedProject.flat_unit_size} (Default)`;
+                              })()}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[9px] text-gray-400 uppercase block font-sans font-bold">Land Share Price</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-450">
+                              {(() => {
+                                const letter = selectedUnit.slice(-1).toUpperCase();
+                                if (selectedProject.unit_configs && selectedProject.unit_configs[letter]) {
+                                  return `${(selectedProject.unit_configs[letter].land_share).toLocaleString()} BDT`;
+                                }
+                                if (selectedProject.land_share_price !== undefined && selectedProject.land_share_price !== null) {
+                                  return `${(selectedProject.land_share_price).toLocaleString()} BDT`;
+                                }
+                                const dirProj = directoryProjects.find(p => p.id === selectedProject.project_id);
+                                return dirProj ? `${(dirProj.land_share_amount).toLocaleString()} BDT` : 'N/A';
+                              })()}
+                            </span>
                           </div>
                         </div>
 
@@ -1099,7 +1228,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
       {/* Save Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border border-gray-100 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full border border-gray-100 dark:border-slate-800 p-6 shadow-2xl space-y-4">
             <div>
               <h3 className="text-base font-bold text-gray-900 dark:text-white">
                 {editingId ? "Edit Campaign Property On Sale" : "Configure New Pre-sale Property Campaign"}
@@ -1127,7 +1256,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                 <select
                   required
                   value={formData.project_id}
-                  onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
+                  onChange={(e) => handleProjectIdChange(e.target.value)}
                   className="w-full text-xs font-semibold px-4 py-2.5 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600"
                 >
                   <option value="" disabled>-- Choose Project Directory --</option>
@@ -1147,6 +1276,29 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                   onChange={(e) => setFormData({ ...formData, flat_unit_size: e.target.value })}
                   className="w-full text-xs font-semibold px-4 py-2.5 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50/50 dark:bg-slate-800/30 px-2.5 py-1 rounded-md">
+                  Campaign Default Land Share Price (BDT) *
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g. 600000"
+                    value={formData.land_share_price}
+                    onChange={(e) => handleLandSharePriceChange(e.target.value)}
+                    className="w-full text-xs font-semibold pl-4 pr-32 py-2.5 border border-indigo-200 dark:border-indigo-900 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600"
+                  />
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-1 rounded-lg">
+                    Propagates to all units
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400">
+                  Changing this will update all unit types to match. You can still modify individual units separately below!
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1170,9 +1322,65 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
                     max="12"
                     required
                     value={formData.units_per_floor}
-                    onChange={(e) => setFormData({ ...formData, units_per_floor: Number(e.target.value) })}
+                    onChange={(e) => handleUnitsPerFloorChange(Number(e.target.value))}
                     className="w-full text-xs font-semibold px-4 py-2.5 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600"
                   />
+                </div>
+              </div>
+
+              {/* Dynamic Suffix configurations section */}
+              <div className="space-y-2 border-t border-gray-100 dark:border-slate-800 pt-3">
+                <label className="block text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
+                  Configure Individual Unit Types (Layout, Sizes & Pricing)
+                </label>
+                <div className="max-h-56 overflow-y-auto space-y-2 border border-dashed border-indigo-100 dark:border-slate-800 p-2.5 rounded-2xl bg-indigo-50/10">
+                  {Array.from({ length: Number(formData.units_per_floor || 1) }).map((_, index) => {
+                    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+                    const letter = letters[index] || String.fromCharCode(65 + index);
+                    const config = unitConfigs[letter] || { size: 1200, land_share: 500000 };
+                    
+                    return (
+                      <div key={letter} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center bg-gray-50/70 dark:bg-slate-850/50 p-2.5 rounded-xl border border-gray-100/30">
+                        <div className="text-xs font-bold text-gray-700 dark:text-slate-300">
+                          Unit <span className="font-mono text-indigo-600 dark:text-indigo-400 font-extrabold text-sm">{letter}</span> (e.g. {formData.floor_number || 4}{letter})
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Size (SFT)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            required
+                            value={config.size}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setUnitConfigs(prev => ({
+                                ...prev,
+                                [letter]: { ...prev[letter], size: val }
+                              }));
+                            }}
+                            className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Land Share price (BDT)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            required
+                            value={config.land_share}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setUnitConfigs(prev => ({
+                                ...prev,
+                                [letter]: { ...prev[letter], land_share: val }
+                              }));
+                            }}
+                            className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-white"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

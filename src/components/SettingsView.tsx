@@ -13,8 +13,25 @@ import {
   Trash2, 
   RefreshCw,
   Bell,
-  HelpCircle
+  HelpCircle,
+  Database,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  Link2,
+  LogOut,
+  FolderOpen
 } from 'lucide-react';
+import { useToast } from './Toast';
+import {
+  loginToGoogleDrive,
+  logoutFromGoogleDrive,
+  getCachedGoogleUser,
+  listGoogleDriveBackups,
+  uploadGoogleDriveBackup,
+  downloadGoogleDriveBackup,
+  GoogleDriveUser
+} from '../lib/googleDrive';
 
 interface SettingsProps {
   authToken: string;
@@ -22,11 +39,17 @@ interface SettingsProps {
 }
 
 export default function SettingsView({ authToken, userRole }: SettingsProps) {
+  const { toast } = useToast();
   const [logs, setLogs] = useState<any[]>([]);
   const [notifList, setNotifList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Google Drive client integration states
+  const [gUser, setGUser] = useState<GoogleDriveUser | null>(getCachedGoogleUser());
+  const [gDriveFiles, setGDriveFiles] = useState<any[]>([]);
+  const [gLoading, setGLoading] = useState<boolean>(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -51,9 +74,120 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     }
   };
 
+  const fetchGDriveFiles = async () => {
+    try {
+      const files = await listGoogleDriveBackups();
+      setGDriveFiles(files);
+    } catch (err: any) {
+      console.error("[SettingsView] Failed to list GDrive files:", err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    if (getCachedGoogleUser()) {
+      fetchGDriveFiles();
+    }
   }, [authToken]);
+
+  const handleGDriveLogin = async () => {
+    setGLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const u = await loginToGoogleDrive();
+      setGUser(u);
+      toast.success("Successfully authenticated with Google Drive!");
+      setTimeout(async () => {
+        try {
+          const files = await listGoogleDriveBackups();
+          setGDriveFiles(files);
+        } catch (e) {
+          console.error(e);
+        }
+      }, 800);
+    } catch (err: any) {
+      toast.error("Google Drive connection failed: " + err.message);
+    } finally {
+      setGLoading(false);
+    }
+  };
+
+  const handleGDriveLogout = async () => {
+    setGLoading(true);
+    try {
+      await logoutFromGoogleDrive();
+      setGUser(null);
+      setGDriveFiles([]);
+      toast.success("Disconnected from Google Drive.");
+    } catch (err: any) {
+      toast.error("Logout failed.");
+    } finally {
+      setGLoading(false);
+    }
+  };
+
+  const handleBackupToGDrive = async () => {
+    setError(null);
+    setSuccess(null);
+    setGLoading(true);
+    try {
+      const res = await fetch('/api/system/backup', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) throw new Error("Failed to export current system database dump");
+      const data = await res.json();
+
+      const result = await uploadGoogleDriveBackup(data);
+      setSuccess(`Successfully backed up project data to Google Drive! File created: ${result.name}`);
+      toast.success("Backup uploaded to Google Drive!");
+      
+      await fetchGDriveFiles();
+    } catch (err: any) {
+      console.error(err);
+      setError("Google Drive backup failed: " + err.message);
+      toast.error("Failed to upload backup to Google Drive.");
+    } finally {
+      setGLoading(false);
+    }
+  };
+
+  const handleRestoreFromGDrive = async (fileId: string, fileName: string) => {
+    const confirmed = window.confirm(`Are you sure you want to restore the backup "${fileName}"? This will COMPLETELY overwrite all active platform database records.`);
+    if (!confirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setGLoading(true);
+    try {
+      const backupContent = await downloadGoogleDriveBackup(fileId);
+
+      const res = await fetch('/api/system/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(backupContent)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Server restore transaction failed");
+      }
+
+      setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
+      toast.success("Google Drive backup restored successfully!");
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setError("Failed to restore backup from Google Drive: " + err.message);
+      toast.error("Failed to restore Google Drive backup.");
+    } finally {
+      setGLoading(false);
+    }
+  };
 
   const handleBackup = async () => {
     setError(null);
@@ -75,6 +209,35 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       setSuccess("Database master backup JSON serialized and downloaded successfully.");
     } catch (err: any) {
       setError("Backup serialization failed.");
+    }
+  };
+
+  const handleFirestoreBackup = async () => {
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch('/api/system/firestore-backup', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to download live state");
+      }
+      const data = await res.json();
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tphl_firestore_live_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setSuccess("Live Firestore database backup serialized and downloaded cleanly from cloud collections.");
+      toast.success("Live Firestore backup downloaded successfully!");
+    } catch (err: any) {
+      console.error(err);
+      setError("Cloud Firestore raw export compilation failed: " + err.message);
+      toast.error("Failed to compile direct Firestore backup.");
     }
   };
 
@@ -103,11 +266,13 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         }
 
         setSuccess("Database master recovery successfully loaded. Reloading system catalogs...");
+        toast.success("Database master recovery successfully loaded!");
         fetchData();
         // Force fully reload window to lock recalculated db indexes
         setTimeout(() => window.location.reload(), 1500);
       } catch (err: any) {
         setError(err.message || "Invalid backup schema file format.");
+        toast.error(err.message || "Failed to restore database backup.");
       }
     };
     reader.readAsText(file);
@@ -120,9 +285,11 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       setSuccess("Notifications marked read.");
+      toast.success("All system notifications marked as read.");
       fetchData();
     } catch (err) {
       console.error(err);
+      toast.error("Failed to clear notifications.");
     }
   };
 
@@ -149,38 +316,192 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         </div>
       )}
 
-      {/* Backup and Restore Cards */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4">
-          <div className="flex items-center gap-2">
-            <Download className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-sm font-bold text-gray-800">Export System Master Dump</h2>
+      {/* Ephemeral Local Storage Warning Box */}
+      <div className="bg-amber-50 border border-amber-200/60 rounded-3xl p-6 shadow-2xs space-y-3">
+        <div className="flex items-center gap-2 text-amber-800">
+          <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 animate-pulse" />
+          <h3 className="text-sm font-bold">Vercel Deployment &amp; Ephemeral Local Filesystem Warning</h3>
+        </div>
+        <p className="text-xs text-amber-700 leading-relaxed font-medium">
+          Because <strong>Vercel</strong> operates on an ephemeral, serverless container architecture, any backend database files stored in the container directory (e.g., <code>db-store.json</code>) will be reset when active instances recycle or spin down.
+          To solve this and ensure complete persistence for Vercel, please connect your <strong>Google Drive Cloud Synchronisation</strong> panel below to back up and restore database snapshots dynamically on-demand!
+        </p>
+      </div>
+
+      {/* Google Drive Cloud Synchronisation Section */}
+      <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-100 pb-5">
+          <div className="flex items-center gap-3">
+            <Cloud className="w-6 h-6 text-indigo-600 shrink-0" />
+            <div>
+              <h2 className="text-sm font-bold text-gray-800">Google Drive Cloud Synchronisation</h2>
+              <p className="text-[11px] text-gray-500">Persist, backup, or retrieve complete portal database states dynamically on serverless platforms.</p>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 leading-normal">
-            Download a single, highly compressed JSON file structure detailing all tables of your database (Projects, Teams, Rule structures, Sales lists, Calculated Incentives, Logs). Great for archival schedules or database migrations.
-          </p>
+          
+          <div>
+            {gUser ? (
+              <div className="flex items-center gap-3 bg-gray-50 border border-gray-150 rounded-2xl px-3.5 py-1.5 text-xs">
+                {gUser.photoURL && (
+                  <img src={gUser.photoURL} alt="Google Profile" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full border border-gray-200" />
+                )}
+                <div className="text-left leading-tight">
+                  <p className="font-semibold text-gray-700 text-[11px]">{gUser.displayName || 'Authorized User'}</p>
+                  <p className="text-[9px] text-gray-400 font-mono">{gUser.email}</p>
+                </div>
+                <button
+                  onClick={handleGDriveLogout}
+                  disabled={gLoading}
+                  className="ml-2 hover:bg-rose-50 p-1.5 rounded-lg text-rose-500 transition cursor-pointer"
+                  title="Sign Out of Google Drive"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGDriveLogin}
+                disabled={gLoading}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Link2 className="w-4 h-4" />
+                Connect to Google Drive
+              </button>
+            )}
+          </div>
+        </div>
+
+        {userRole === 'Admin' ? (
+          <div className="grid md:grid-cols-12 gap-6">
+            <div className="md:col-span-5 space-y-4">
+              <h3 className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">Interactive Cloud Actions</h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Connect your Google Drive accounts securely using Google OAuth to directly write master snapshots to your personal cloud files. Backups are stored as private JSON records and can be retrieved instantly.
+              </p>
+
+              <button
+                onClick={handleBackupToGDrive}
+                disabled={gLoading || !gUser}
+                className="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <CloudUpload className="w-4.5 h-4.5" />
+                Save Active State to Google Drive
+              </button>
+            </div>
+
+            <div className="md:col-span-7 bg-gray-50/50 border border-gray-100 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+                <div className="flex items-center gap-2 text-gray-700">
+                  <FolderOpen className="w-4 h-4 text-indigo-500" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Available Database Snapshots</span>
+                </div>
+                {gUser && (
+                  <button
+                    onClick={fetchGDriveFiles}
+                    disabled={gLoading}
+                    className="p-1 text-gray-400 hover:text-indigo-600 cursor-pointer transition"
+                    title="Refresh listing"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {!gUser ? (
+                <div className="py-8 text-center text-xs text-gray-400 italic">
+                  Please connect Google Drive to scan for live backup files.
+                </div>
+              ) : gDriveFiles.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-400 italic">
+                  No prior database backups found on Google Drive. Click "Save Active State" to create one.
+                </div>
+              ) : (
+                <div className="max-h-44 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                  {gDriveFiles.map((file) => (
+                    <div key={file.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl p-3 hover:border-indigo-150 transition shadow-3xs">
+                      <div className="leading-tight">
+                        <p className="text-[11px] font-bold text-gray-700 break-all">{file.name}</p>
+                        <p className="text-[9px] text-gray-400 font-mono mt-0.5">
+                          Created: {new Date(file.createdTime).toLocaleString()} &bull; Size: {file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'N/A'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleRestoreFromGDrive(file.id, file.name)}
+                        disabled={gLoading}
+                        className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-emerald-100 cursor-pointer transition shrink-0"
+                      >
+                        <CloudDownload className="w-3.5 h-3.5" />
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+        )}
+      </div>
+
+      {/* Backup and Restore Cards */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Download className="w-5 h-5 text-indigo-600" />
+              <h2 className="text-sm font-bold text-gray-800">Export System Master Dump</h2>
+            </div>
+            <p className="text-xs text-gray-500 leading-normal">
+              Download a single, highly compressed JSON file structure detailing all tables of your database (Projects, Teams, Rule structures, Sales lists, Calculated Incentives, Logs). Great for archival schedules or database migrations.
+            </p>
+          </div>
           {userRole === 'Admin' ? (
             <button
               onClick={handleBackup}
-              className="flex items-center justify-center gap-1.5 w-full bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer"
+              className="flex items-center justify-center gap-1.5 w-full bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer mt-4"
             >
               Export JSON Database Snapshot
             </button>
           ) : (
-            <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+            <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
           )}
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4">
-          <div className="flex items-center gap-2">
-            <Upload className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-sm font-bold text-gray-800">Restore System Master Dump</h2>
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-sm font-bold text-gray-800">Export Direct Firestore DB</h2>
+            </div>
+            <p className="text-xs text-gray-500 leading-normal">
+              Directly query the live Firestore cloud database collections instantly, bypassing server memory caches, to compile and download a complete JSON backup of the active live Firestore state.
+            </p>
           </div>
-          <p className="text-xs text-gray-500 leading-normal">
-            Select a previously exported TPHL database dump file. This completely overwrites the active platform database records, chronologically re-maps the sequence IDs, and re-computes active incentive commission rates.
-          </p>
           {userRole === 'Admin' ? (
-            <label className="flex items-center justify-center gap-1.5 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer text-center select-none">
+            <button
+              onClick={handleFirestoreBackup}
+              className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer mt-4"
+            >
+              Export Raw Firestore JSON
+            </button>
+          ) : (
+            <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
+          )}
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-indigo-600" />
+              <h2 className="text-sm font-bold text-gray-800">Restore System Master Dump</h2>
+            </div>
+            <p className="text-xs text-gray-500 leading-normal">
+              Select a previously exported TPHL database dump file. This completely overwrites the active platform database records, chronologically re-maps the sequence IDs, and re-computes active incentive commission rates.
+            </p>
+          </div>
+          {userRole === 'Admin' ? (
+            <label className="flex items-center justify-center gap-1.5 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer text-center select-none mt-4">
               <input
                 type="file"
                 accept=".json"
@@ -190,7 +511,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
               Upload Schema Backup &amp; Recalculate
             </label>
           ) : (
-            <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+            <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
           )}
         </div>
       </div>

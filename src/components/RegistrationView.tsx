@@ -19,6 +19,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import { ProjectOnSale, UnitRegistration, Project } from '../types';
+import { useToast } from './Toast';
 
 interface RegistrationViewProps {
   authToken: string;
@@ -26,6 +27,7 @@ interface RegistrationViewProps {
 }
 
 export default function RegistrationView({ authToken, userRole }: RegistrationViewProps) {
+  const { toast } = useToast();
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
   const [unitRegistrations, setUnitRegistrations] = useState<UnitRegistration[]>([]);
@@ -103,13 +105,16 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
         const updatedRecord = await res.json();
         // Update local state
         setUnitRegistrations(prev => prev.map(r => r.id === record.id ? updatedRecord : r));
+        toast.success(`Unit ${record.unit_name} registration status successfully updated to ${nextState}!`);
       } else {
         const err = await res.json();
         alert(err.error || "Failed to update registration state.");
+        toast.error(err.error || "Failed to update unit registration state.");
       }
     } catch (e) {
       console.error(e);
       alert("Error reaching Server DB.");
+      toast.error("Network error reaching server database.");
     } finally {
       setUpdatingId(null);
     }

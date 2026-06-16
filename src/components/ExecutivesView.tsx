@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { SalesExecutive, SalesTeam, Project } from '../types';
+import { useToast } from './Toast';
 
 interface ExecutivesProps {
   authToken: string;
@@ -28,6 +29,7 @@ interface ExecutivesProps {
 }
 
 export default function ExecutivesView({ authToken, userRole }: ExecutivesProps) {
+  const { toast } = useToast();
   const [executives, setExecutives] = useState<any[]>([]);
   const [teams, setTeams] = useState<SalesTeam[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -98,6 +100,7 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
 
     if (!empId || !name) {
       setError("Please fill out Employee ID and Executive Name");
+      toast.warning("Please fill out Employee ID and Executive Name");
       return;
     }
 
@@ -123,10 +126,12 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
       if (!res.ok) throw new Error(data.error || "Failed to register executive");
 
       setSuccess(`Executive '${name}' successfully registered inside TPHL system directory.`);
+      toast.success(`Executive '${name}' successfully registered!`);
       setIsAddOpen(false);
       fetchData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to register sales executive");
     }
   };
 
@@ -156,10 +161,12 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
       if (!res.ok) throw new Error(data.error || "Failed to edit executive");
 
       setSuccess(`Executive File for '${name}' has been updated.`);
+      toast.success(`Executive File for '${name}' has been updated!`);
       setIsEditOpen(false);
       fetchData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to update executive");
     }
   };
 
@@ -187,9 +194,11 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
       if (!res.ok) throw new Error(data.error || "Failed to delete executive");
 
       setSuccess(`Record for '${execName}' has been removed successfully.`);
+      toast.success(`Record for '${execName}' has been deleted successfully.`);
       fetchData();
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to delete executive record");
     }
   };
 
@@ -383,12 +392,14 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
       if (!res.ok) throw new Error(result.error || "CSV bulk registration failed.");
 
       setSuccess(`Success! Registered ${result.importedCount} new Sales Executives of TPHL directory via CSV. ${result.skippedCount} rows skipped.`);
+      toast.success(`Successfully imported ${result.importedCount} Sales Executives!`);
       setIsCsvModalOpen(false);
       setCsvFile(null);
       setParsedData([]);
       fetchData();
     } catch (err: any) {
       setCsvError(err.message);
+      toast.error(err.message || "Failed to import executives via CSV");
     } finally {
       setImporting(false);
     }
