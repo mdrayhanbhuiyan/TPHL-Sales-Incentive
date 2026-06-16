@@ -409,6 +409,17 @@ export function addNotification(title: string, message: string, type: 'info' | '
 
 // Full Relational Incentive Calculation Engine
 export function recalculateAllIncentivesDirect(store: DatabaseStore) {
+  if (!store) return;
+
+  // Clean all collections in-place to remove null, undefined, or invalid/empty records
+  store.sales = Array.isArray(store.sales) ? store.sales.filter(s => s && typeof s === 'object') : [];
+  store.projects = Array.isArray(store.projects) ? store.projects.filter(p => p && typeof p === 'object') : [];
+  store.salesExecutives = Array.isArray(store.salesExecutives) ? store.salesExecutives.filter(e => e && typeof e === 'object') : [];
+  store.salesTeams = Array.isArray(store.salesTeams) ? store.salesTeams.filter(t => t && typeof t === 'object') : [];
+  store.incentiveRules = Array.isArray(store.incentiveRules) ? store.incentiveRules.filter(r => r && typeof r === 'object') : [];
+  store.projectsOnSale = Array.isArray(store.projectsOnSale) ? store.projectsOnSale.filter(p => p && typeof p === 'object') : [];
+  store.unitRegistrations = Array.isArray(store.unitRegistrations) ? store.unitRegistrations.filter(r => r && typeof r === 'object') : [];
+
   // Clear previous incentives
   const rawSales = [...store.sales];
   
@@ -424,7 +435,11 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
 
   // Order chronologically and write sale sequence numbers back to the sale structures
   Object.keys(execProjectSalesMap).forEach(key => {
-    execProjectSalesMap[key].sort((a, b) => new Date(a.sale_date).getTime() - new Date(b.sale_date).getTime());
+    execProjectSalesMap[key].sort((a, b) => {
+      const timeA = a.sale_date ? new Date(a.sale_date).getTime() : 0;
+      const timeB = b.sale_date ? new Date(b.sale_date).getTime() : 0;
+      return (Number.isNaN(timeA) ? 0 : timeA) - (Number.isNaN(timeB) ? 0 : timeB);
+    });
     execProjectSalesMap[key].forEach((sale, index) => {
       sale.sale_number = index + 1;
     });

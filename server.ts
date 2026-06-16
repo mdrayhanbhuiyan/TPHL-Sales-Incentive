@@ -27,6 +27,26 @@ import {
   Sale 
 } from './src/types';
 
+export function getSaleVolume(sale: any, store: DatabaseStore): number {
+  const proj = store.projects.find(p => p.id === sale.project_id);
+  let saleVolume = proj ? proj.land_share_amount : 0;
+  if (sale.project_on_sale_id && store.projectsOnSale) {
+    const pos = store.projectsOnSale.find(p => p.id === sale.project_on_sale_id);
+    if (pos) {
+      if (pos.land_share_price !== undefined && pos.land_share_price !== null) {
+        saleVolume = pos.land_share_price;
+      }
+      if (pos.unit_configs) {
+        const letter = (sale.unit_name && typeof sale.unit_name === 'string') ? sale.unit_name.slice(-1).toUpperCase() : '';
+        if (letter && pos.unit_configs[letter] !== undefined) {
+          saleVolume = pos.unit_configs[letter].land_share;
+        }
+      }
+    }
+  }
+  return saleVolume;
+}
+
 export async function startServer() {
   // Initialize and synchronise the in-memory cache with Firebase Firestore state on startup
   await initFirestore();
@@ -161,7 +181,7 @@ export async function startServer() {
     const totalBonuses = targetIncentives.reduce((sum, item) => sum + item.floor_bonus + item.target_bonus + item.team_bonus, 0);
 
     // Dynamic Top Stats
-    // 1. Top Seller (Executive with highest sales volume = sales count * Land Share Amount, or just count)
+    // 1. Top Seller (Executive with highest sales volume based on flat-wise share values)
     const execSalesMap: Record<string, { name: string; count: number; volume: number }> = {};
     targetSales.forEach(sale => {
       const exec = store.salesExecutives.find(e => e.id === sale.executive_id);
@@ -171,7 +191,7 @@ export async function startServer() {
         execSalesMap[exec.id] = { name: exec.name, count: 0, volume: 0 };
       }
       execSalesMap[exec.id].count += 1;
-      execSalesMap[exec.id].volume += proj.land_share_amount;
+      execSalesMap[exec.id].volume += getSaleVolume(sale, store);
     });
 
     let topSeller = "None";
@@ -280,10 +300,7 @@ export async function startServer() {
         const d = new Date(sale.sale_date);
         const day = d.getDate();
         
-        const proj = store.projects.find(p => p.id === sale.project_id);
-        if (proj) {
-          totalVolumeBDT += proj.land_share_amount;
-        }
+        totalVolumeBDT += getSaleVolume(sale, store);
 
         if (day <= 7) w1++;
         else if (day <= 14) w2++;
@@ -332,8 +349,7 @@ export async function startServer() {
       const y = pDate.getFullYear();
       const key = `${y}-${m}`;
       
-      const proj = store.projects.find(p => p.id === sale.project_id);
-      const saleVal = proj ? proj.land_share_amount : 0;
+      const saleVal = getSaleVolume(sale, store);
 
       if (!monthlySeries[key]) {
         monthlySeries[key] = {
@@ -368,7 +384,7 @@ export async function startServer() {
     // Project Wise Sales chart
     const projectSalesChartList = store.projects.map(proj => {
       const projSales = targetSales.filter(s => s.project_id === proj.id);
-      const projSalesVal = projSales.length * proj.land_share_amount;
+      const projSalesVal = projSales.reduce((sum, s) => sum + getSaleVolume(s, store), 0);
 
       // Group executive contributions
       const execContributionsMap: Record<string, { id: string; name: string; employee_id: string; count: number; salesVal: number }> = {};
@@ -379,7 +395,7 @@ export async function startServer() {
           execContributionsMap[exec.id] = { id: exec.id, name: exec.name, employee_id: exec.employee_id, count: 0, salesVal: 0 };
         }
         execContributionsMap[exec.id].count += 1;
-        execContributionsMap[exec.id].salesVal += proj.land_share_amount;
+        execContributionsMap[exec.id].salesVal += getSaleVolume(s, store);
       });
       const execContributions = Object.values(execContributionsMap);
 
@@ -528,7 +544,7 @@ export async function startServer() {
     res.json({
       cards: {
         totalSales: totalSalesCount,
-        totalSalesValue: targetSales.reduce((sum, s) => sum + (store.projects.find(p => p.id === s.project_id)?.land_share_amount || 0), 0),
+        totalSalesValue: targetSales.reduce((sum, s) => sum + getSaleVolume(s, store), 0),
         totalIncentivePaid,
         totalBaseIncentive,
         totalBonuses,
@@ -1708,7 +1724,7 @@ export async function startServer() {
       return {
         ...s,
         project_name: proj ? proj.project_name : 'Deleted Project',
-        land_share_amount: proj ? proj.land_share_amount : 0,
+        land_share_amount: getSaleVolume(s, store),
         executive_name: exec ? exec.name : 'Unknown Executive'
       };
     });
@@ -1876,7 +1892,7 @@ export async function startServer() {
         employee_id: exec ? exec.employee_id : 'N/A',
         team_name: team ? team.team_name : 'No Team',
         project_name: proj ? proj.project_name : 'Deleted Project',
-        land_share_amount: proj ? proj.land_share_amount : 0
+        land_share_amount: sale ? getSaleVolume(sale, store) : (proj ? proj.land_share_amount : 0)
       };
     });
 
@@ -1958,25 +1974,25 @@ export async function startServer() {
         return;
       }
 
-      // Sanitize backupData to ensure all collections conform to DatabaseStore structure
+      // Sanitize backupData to ensure all collections conform to DatabaseStore structure and contain no null/undefined members
       const sanitizedStore: DatabaseStore = {
-        users: Array.isArray(backupData.users) ? backupData.users : [],
-        projects: Array.isArray(backupData.projects) ? backupData.projects : [],
-        salesTeams: Array.isArray(backupData.salesTeams) ? backupData.salesTeams : [],
-        teamProjects: Array.isArray(backupData.teamProjects) ? backupData.teamProjects : [],
-        salesExecutives: Array.isArray(backupData.salesExecutives) ? backupData.salesExecutives : [],
-        incentiveRules: Array.isArray(backupData.incentiveRules) ? backupData.incentiveRules : [],
+        users: Array.isArray(backupData.users) ? backupData.users.filter((x: any) => x && typeof x === 'object') : [],
+        projects: Array.isArray(backupData.projects) ? backupData.projects.filter((x: any) => x && typeof x === 'object') : [],
+        salesTeams: Array.isArray(backupData.salesTeams) ? backupData.salesTeams.filter((x: any) => x && typeof x === 'object') : [],
+        teamProjects: Array.isArray(backupData.teamProjects) ? backupData.teamProjects.filter((x: any) => x && typeof x === 'object') : [],
+        salesExecutives: Array.isArray(backupData.salesExecutives) ? backupData.salesExecutives.filter((x: any) => x && typeof x === 'object') : [],
+        incentiveRules: Array.isArray(backupData.incentiveRules) ? backupData.incentiveRules.filter((x: any) => x && typeof x === 'object') : [],
         bonusRules: backupData.bonusRules && typeof backupData.bonusRules === 'object' ? backupData.bonusRules : {
           target_90_bonus: 2000,
           target_100_bonus: 3500,
           team_target_bonus: 5000
         },
-        sales: Array.isArray(backupData.sales) ? backupData.sales : [],
-        salesIncentives: Array.isArray(backupData.salesIncentives) ? backupData.salesIncentives : [],
-        auditLogs: Array.isArray(backupData.auditLogs) ? backupData.auditLogs : [],
-        notifications: Array.isArray(backupData.notifications) ? backupData.notifications : [],
-        projectsOnSale: Array.isArray(backupData.projectsOnSale) ? backupData.projectsOnSale : [],
-        unitRegistrations: Array.isArray(backupData.unitRegistrations) ? backupData.unitRegistrations : []
+        sales: Array.isArray(backupData.sales) ? backupData.sales.filter((x: any) => x && typeof x === 'object') : [],
+        salesIncentives: Array.isArray(backupData.salesIncentives) ? backupData.salesIncentives.filter((x: any) => x && typeof x === 'object') : [],
+        auditLogs: Array.isArray(backupData.auditLogs) ? backupData.auditLogs.filter((x: any) => x && typeof x === 'object') : [],
+        notifications: Array.isArray(backupData.notifications) ? backupData.notifications.filter((x: any) => x && typeof x === 'object') : [],
+        projectsOnSale: Array.isArray(backupData.projectsOnSale) ? backupData.projectsOnSale.filter((x: any) => x && typeof x === 'object') : [],
+        unitRegistrations: Array.isArray(backupData.unitRegistrations) ? backupData.unitRegistrations.filter((x: any) => x && typeof x === 'object') : []
       };
 
       writeStore(sanitizedStore);
