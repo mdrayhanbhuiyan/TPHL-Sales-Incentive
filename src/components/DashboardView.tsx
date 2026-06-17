@@ -33,23 +33,58 @@ interface DashboardProps {
 export default function DashboardView({ authToken, userRole, userProfile }: DashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'sale' | 'milestone' | 'project'>('all');
   const [heatmapMode, setHeatmapMode] = useState<'weekly' | 'kpis'>('weekly');
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setFetchError(null);
+
     fetch('/api/dashboard/analytics', {
-      headers: { 'Authorization': `Bearer ${authToken}` }
+      headers: { 
+        'Authorization': `Bearer ${authToken}`,
+        'Accept': 'application/json'
+      }
     })
-    .then(r => r.json())
+    .then(async response => {
+      if (!response.ok) {
+        let text = "";
+        try {
+          const errData = await response.json();
+          text = errData.error || errData.message || `Server returned status ${response.status}`;
+        } catch {
+          text = (await response.text()) || `Server returned status ${response.status}`;
+        }
+        throw new Error(text);
+      }
+      return response.json().catch(() => {
+        throw new Error("Unable to parse a valid JSON payload from the server analytics engine.");
+      });
+    })
     .then(res => {
+      if (!active) return;
+      if (!res || typeof res !== 'object') {
+        throw new Error("Empty or malformed payload structure received from server.");
+      }
+      if (res.error) {
+        throw new Error(res.error);
+      }
       setData(res);
       setLoading(false);
     })
     .catch(err => {
-      console.error(err);
+      if (!active) return;
+      console.error("[Dashboard] Error fetching analytics:", err);
+      setFetchError(err.message || String(err));
       setLoading(false);
     });
+
+    return () => {
+      active = false;
+    };
   }, [authToken]);
 
   if (loading) {
@@ -61,23 +96,35 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
     );
   }
 
-  if (!data || data.error) {
+  if (fetchError || !data) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <div className="text-xl font-bold text-rose-600 font-sans">Error Loading Dashboard Analytics</div>
-        <p className="text-sm font-medium text-gray-500 font-mono">{data?.error || "Invalid response format"}</p>
-        <p className="text-xs text-gray-400">Please verify your server connection or try logging out and logging in again.</p>
+      <div className="flex flex-col items-center justify-center py-20 px-4 space-y-4 max-w-xl mx-auto text-center hover:scale-101 transition duration-300">
+        <div className="p-3 bg-rose-50/75 border border-rose-100 rounded-full text-rose-600">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div className="text-xl font-bold text-gray-800 font-sans">Error Loading Dashboard Analytics</div>
+        <div className="p-4 bg-rose-50/50 border border-rose-100 rounded-2xl text-xs font-mono font-semibold text-rose-700 w-full break-all leading-relaxed text-left">
+          <p className="font-bold border-b border-rose-100/50 pb-1 mb-2 text-rose-800">Diag Log Context:</p>
+          <p className="whitespace-pre-wrap">{fetchError || "Empty or invalid response payload structure received."}</p>
+        </div>
+        <p className="text-xs text-gray-400 font-medium">Please verify your server connection, refresh user credentials, or log out and authenticate again.</p>
       </div>
     );
   }
 
-  const { cards, tops, charts, execAchievements, execAchievementsPeriod } = data;
+  const cards = data.cards || {};
+  const tops = data.tops || {};
+  const charts = data.charts || {};
+  const execAchievements = data.execAchievements || [];
+  const execAchievementsPeriod = data.execAchievementsPeriod || "";
 
   // Let's find maximums to scale custom SVG charts proportionally safely
-  const timelineData = charts?.timeline || [];
-  const projectData = charts?.projects || [];
-  const teamData = charts?.teams || [];
-  const achievements = execAchievements || [];
+  const timelineData = Array.isArray(charts?.timeline) ? charts.timeline : [];
+  const projectData = Array.isArray(charts?.projects) ? charts.projects : [];
+  const teamData = Array.isArray(charts?.teams) ? charts.teams : [];
+  const achievements = Array.isArray(execAchievements) ? execAchievements : [];
 
   const maxSales = Math.max(...timelineData.map((d: any) => d.sales || 0), 100000);
   const maxIncentive = Math.max(...timelineData.map((d: any) => d.incentive || 0), 10000);

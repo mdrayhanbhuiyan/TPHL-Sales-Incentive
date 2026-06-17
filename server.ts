@@ -16,6 +16,7 @@ import {
   initFirestore,
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
+  getCSVDiagnostics,
   DatabaseStore,
   arrayToCSV,
   csvToItems,
@@ -2144,6 +2145,22 @@ export async function startServer() {
     } catch (err: any) {
       console.error("[server.ts] Firebase diagnostics endpoint error:", err);
       res.status(500).json({ error: "Failed to run Firebase connection diagnostics: " + err.message });
+    }
+  });
+
+  // Consolidated CSV Storage & Vercel File Environment Diagnostics Check
+  app.get('/api/system/csv-diagnostics', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const diagnostics = await getCSVDiagnostics();
+      res.json(diagnostics);
+    } catch (err: any) {
+      console.error("[server.ts] CSV diagnostics endpoint error:", err);
+      res.status(500).json({ error: "Failed to analyze CSV datastore integration assets: " + err.message });
     }
   });
 

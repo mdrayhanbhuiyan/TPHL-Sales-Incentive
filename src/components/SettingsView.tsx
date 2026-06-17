@@ -110,6 +110,11 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [diagLoading, setDiagLoading] = useState<boolean>(false);
   const [diagError, setDiagError] = useState<string | null>(null);
 
+  // Live CSV Datastore & Vercel Filesystem Integration Diagnostics states
+  const [csvDiagResults, setCsvDiagResults] = useState<any | null>(null);
+  const [csvDiagLoading, setCsvDiagLoading] = useState<boolean>(false);
+  const [csvDiagError, setCsvDiagError] = useState<string | null>(null);
+
   // Database Integrity Check states
   const [integrityReport, setIntegrityReport] = useState<any | null>(null);
   const [integrityLoading, setIntegrityLoading] = useState<boolean>(false);
@@ -156,6 +161,28 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       toast.error("Diagnostics check failed.");
     } finally {
       setDiagLoading(false);
+    }
+  };
+
+  const runCSVDiagnostics = async () => {
+    setCsvDiagLoading(true);
+    setCsvDiagError(null);
+    try {
+      const res = await fetch('/api/system/csv-diagnostics', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to query CSV connectivity diagnostics.");
+      }
+      const data = await res.json();
+      setCsvDiagResults(data);
+      toast.success("CSV Datastore diagnostics completed successfully!");
+    } catch (err: any) {
+      console.error(err);
+      setCsvDiagError(err.message || "An unexpected error occurred during filesystem datastore health check.");
+      toast.error("CSV diagnostics failed.");
+    } finally {
+      setCsvDiagLoading(false);
     }
   };
 
@@ -1300,6 +1327,222 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           <div className="border border-dashed border-gray-200 rounded-2xl py-12 text-center text-xs text-gray-400 font-medium flex flex-col items-center justify-center space-y-2">
             <Database className="w-8 h-8 text-gray-300" />
             <p>No diagnostics ran yet. Click "Run Connectivity Check" to test Firestore communication logs.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Vercel Frontend & CSV-Data File Storage Diagnostics Panel */}
+      <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-100 pb-5">
+          <div className="flex items-center gap-3">
+            <FolderOpen className="w-6 h-6 text-emerald-605 shrink-0" />
+            <div>
+              <h2 className="text-sm font-bold text-gray-800 font-sans tracking-tight">Vercel &amp; CSV-Data Filesystem Diagnostics</h2>
+              <p className="text-[11px] text-gray-400 font-medium leading-relaxed">
+                Check serverless directory presence, check local datastore table file schemas, test filesystem write behaviors, and explore current active rows.
+              </p>
+            </div>
+          </div>
+          {userRole === 'Admin' ? (
+            <button
+              onClick={runCSVDiagnostics}
+              disabled={csvDiagLoading}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer shrink-0"
+              id="csv-diag-btn"
+            >
+              <RefreshCw className={`w-4 h-4 ${csvDiagLoading ? 'animate-spin' : ''}`} />
+              {csvDiagLoading ? "Analyzing Files..." : "Run CSV Connection Diagnostics Check"}
+            </button>
+          ) : (
+            <p className="text-xs text-amber-600 italic">🔒 Protected to platform Administrators only</p>
+          )}
+        </div>
+
+        {csvDiagError && (
+          <div className="bg-rose-50 border border-rose-105 p-4 rounded-xl text-xs font-semibold text-rose-800 flex items-start gap-2">
+            <ShieldAlert className="w-4.5 h-4.5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Filesystem Diagnostics Error</p>
+              <p className="font-normal mt-0.5 text-rose-700">{csvDiagError}</p>
+            </div>
+          </div>
+        )}
+
+        {csvDiagResults ? (
+          <div className="space-y-6">
+            {/* Overall status bar */}
+            <div className={`p-4.5 rounded-2xl border ${
+              csvDiagResults.status === 'excellent' 
+                ? 'bg-emerald-50/50 border-emerald-150/50' 
+                : csvDiagResults.status === 'warning'
+                ? 'bg-amber-50/70 border-amber-200/50'
+                : 'bg-rose-50 border-rose-105'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className={`p-2 rounded-xl shrink-0 ${
+                  csvDiagResults.status === 'excellent' 
+                    ? 'bg-emerald-100 text-emerald-700' 
+                    : csvDiagResults.status === 'warning'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {csvDiagResults.status === 'excellent' ? (
+                    <CheckCircle className="w-5 h-5" />
+                  ) : csvDiagResults.status === 'warning' ? (
+                    <AlertTriangle className="w-5 h-5" />
+                  ) : (
+                    <ShieldAlert className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                      csvDiagResults.status === 'excellent' 
+                        ? 'bg-emerald-100/80 text-emerald-800' 
+                        : csvDiagResults.status === 'warning'
+                        ? 'bg-amber-150/70 text-amber-800'
+                        : 'bg-rose-155/70 text-rose-800'
+                    }`}>
+                      {csvDiagResults.status}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-medium">Timestamp: {new Date(csvDiagResults.timestamp).toLocaleString()}</span>
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-800 mt-1">{csvDiagResults.message}</h3>
+                  <p className="text-xs text-gray-600 mt-1.5 leading-relaxed font-medium">
+                    {csvDiagResults.recommendation}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Vercel Meta and Directories Checked */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs text-left">
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Vercel Serverless Env Info</h4>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium">On Vercel Platform?</span>
+                    <span className={`font-semibold px-2 py-0.5 rounded-sm text-[10px] ${csvDiagResults.envInfo.isVercel ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {csvDiagResults.envInfo.isVercel ? 'YES ✅' : 'NO 💻'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium">Vercel Environment</span>
+                    <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px]">{csvDiagResults.envInfo.vercelEnv}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium">AWS Region (Serverless Edge)</span>
+                    <span className="font-mono text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded-sm text-[10px]">{csvDiagResults.envInfo.vercelRegion}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium">Current Server Process CWD</span>
+                    <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[9px] break-all max-w-44 text-right">{csvDiagResults.envInfo.cwd}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500 font-medium">Active CSV Path Selected</span>
+                    <span className="font-bold text-gray-800 text-[10px] capitalize font-mono text-right">{csvDiagResults.chosenDirKey.replace(/_/g, ' ')}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs text-left">
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Search Path Directory Status</h4>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between items-start border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium text-xs shrink-0">csv-data/ Directory exists?</span>
+                    <span className={`font-semibold px-2 py-0.5 rounded-sm text-[10px] ${csvDiagResults.csvDirExists ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {csvDiagResults.csvDirExists ? 'Exists' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-start border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium text-xs shrink-0">Writability (Mutation capability)</span>
+                    <span className={`font-semibold px-2 py-0.5 rounded-sm text-[10px] ${csvDiagResults.isWritable ? 'bg-emerald-55 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {csvDiagResults.isWritable ? 'Writable ✅' : 'Read-Only (Vercel standard lock) 🔒'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 border-b border-gray-50 pb-1.5">
+                    <span className="text-gray-500 font-medium text-[10px]">Active search directory:</span>
+                    <code className="text-[9px] text-indigo-700 bg-indigo-50/50 p-1.5 rounded-lg font-mono break-all leading-normal">{csvDiagResults.csvDir}</code>
+                  </div>
+                  {csvDiagResults.writeError && (
+                    <div className="text-[9px] text-rose-700 bg-rose-50/55 p-1.5 rounded-lg border border-rose-100 break-all leading-tight font-medium">
+                      <strong>Mutation block details:</strong> {csvDiagResults.writeError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Individual CSV datastore table file rows metrics */}
+            <div className="space-y-3.5 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs text-left">
+              <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">CSV Datastore Tables Health Check</h4>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-96 overflow-y-auto scrollbar-thin pr-1 pb-1">
+                {csvDiagResults.filesReport.map((file: any) => (
+                  <div key={file.key} className="border border-gray-100 bg-gray-50/20 rounded-xl p-3 flex flex-col justify-between space-y-2">
+                    <div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-gray-700 font-mono truncate max-w-[130px]" title={file.fileName}>{file.fileName}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          file.exists ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400 font-normal'
+                        }`}>
+                          {file.exists ? 'Detected' : 'Not Seeded'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 font-semibold truncate mt-1">Key: {file.key}</p>
+                    </div>
+                    {file.exists && (
+                      <div className="text-[10px] text-gray-500 flex justify-between items-center font-mono pt-1.5 border-t border-gray-100">
+                        <span>Row Count: <strong className="text-indigo-650">{file.linesCount - 1 >= 0 ? file.linesCount - 1 : 0} Rows</strong></span>
+                        <span>{(file.sizeBytes / 1024).toFixed(2)} KB</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Backup db-store.json status snapshot */}
+            <div className="border border-indigo-100/70 bg-indigo-50/15 rounded-2xl p-4.5 text-left space-y-3">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-indigo-650" />
+                <h4 className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">Fallback Snapshot Cache File Check (db-store.json)</h4>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4 text-xs font-semibold text-indigo-900">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between border-b border-indigo-100/40 pb-1.5">
+                    <span className="text-indigo-750">File Detected?</span>
+                    <span>{csvDiagResults.jsonReport.exists ? 'YES ✅' : 'NO ❌'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-indigo-100/40 pb-1.5">
+                    <span className="text-indigo-750">Database Cache File Size</span>
+                    <span className="font-mono text-[10px]">{(csvDiagResults.jsonReport.sizeBytes / 1024).toFixed(2)} KB</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-indigo-755 text-[10px]">Full Path on Serverless Container:</span>
+                    <code className="text-[9px] text-gray-600 bg-white/70 border border-indigo-100/40 p-1.5 rounded-lg select-all break-all leading-normal font-mono">{csvDiagResults.jsonReport.dbStorePath}</code>
+                  </div>
+                </div>
+
+                <div className="space-y-1 bg-white/60 rounded-xl p-3 border border-indigo-100/50 max-h-36 overflow-y-auto scrollbar-thin">
+                  <p className="text-[10px] uppercase font-bold text-indigo-700 tracking-wide pb-1 sticky top-0 bg-white/10">Entity Records Cached:</p>
+                  {Object.keys(csvDiagResults.jsonReport.tableCounts).length > 0 ? (
+                    Object.entries(csvDiagResults.jsonReport.tableCounts).map(([k, cnt]: any) => (
+                      <div key={k} className="flex justify-between text-[10px] text-gray-600 pb-0.5 last:pb-0">
+                        <span className="font-mono">{k}</span>
+                        <span className="font-bold text-indigo-700">{cnt} records</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[9px] text-gray-400">No cached entities found in fallback JSON file.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="border border-dashed border-gray-200 rounded-2xl py-12 text-center text-xs text-gray-400 font-medium flex flex-col items-center justify-center space-y-2">
+            <FolderOpen className="w-8 h-8 text-gray-300" />
+            <p>No filesystem diagnostics ran yet. Click "Run CSV Connection Diagnostics Check" to verify.</p>
           </div>
         )}
       </div>

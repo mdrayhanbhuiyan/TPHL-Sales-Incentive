@@ -1221,3 +1221,186 @@ export async function getFirebaseDiagnostics(): Promise<any> {
   };
   return result;
 }
+
+export async function getCSVDiagnostics(): Promise<any> {
+  const envInfo = {
+    isVercel: !!process.env.VERCEL,
+    vercelEnv: process.env.VERCEL_ENV || 'N/A',
+    vercelRegion: process.env.VERCEL_REGION || 'N/A',
+    nodeEnv: process.env.NODE_ENV || 'N/A',
+    cwd: process.cwd(),
+    __dirnameExists: typeof __dirname !== 'undefined',
+    __dirnamePath: typeof __dirname !== 'undefined' ? __dirname : 'N/A'
+  };
+
+  // Find active CSV Directory
+  let csvDir = path.join(process.cwd(), 'csv-data');
+  let chosenDirKey = 'standard';
+  
+  if (process.env.VERCEL) {
+    const backupCsvDir = path.join(__dirname, '..', 'csv-data');
+    const backupCsvDir2 = path.join(__dirname, '../../csv-data');
+    if (!fs.existsSync(csvDir)) {
+      if (fs.existsSync(backupCsvDir)) {
+        csvDir = backupCsvDir;
+        chosenDirKey = 'backup_level_1';
+      } else if (fs.existsSync(backupCsvDir2)) {
+        csvDir = backupCsvDir2;
+        chosenDirKey = 'backup_level_2';
+      }
+    }
+  }
+
+  const pathsChecked = {
+    standard: path.join(process.cwd(), 'csv-data'),
+    backup_level_1: typeof __dirname !== 'undefined' ? path.join(__dirname, '..', 'csv-data') : 'N/A',
+    backup_level_2: typeof __dirname !== 'undefined' ? path.join(__dirname, '../../csv-data') : 'N/A'
+  };
+
+  const csvDirExists = fs.existsSync(csvDir);
+  let isWritable = false;
+  let writeError = null;
+
+  if (csvDirExists) {
+    // Attempt to test writable state (Vercel has read-only filesystems under app directories, only /tmp is write-safe)
+    const testFile = path.join(csvDir, 'vercel_test_write.txt');
+    try {
+      fs.writeFileSync(testFile, 'TPHL Connection Test', 'utf-8');
+      isWritable = true;
+      fs.unlinkSync(testFile);
+    } catch (err: any) {
+      isWritable = false;
+      writeError = err.message || JSON.stringify(err);
+    }
+  }
+
+  // Gather specific table files details
+  const keys = [
+    'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
+    'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
+    'notifications', 'projectsOnSale', 'unitRegistrations'
+  ];
+
+  const filesReport = keys.map(key => {
+    const filePath = path.join(csvDir, `${key}.csv`);
+    const exists = fs.existsSync(filePath);
+    let sizeBytes = 0;
+    let linesCount = 0;
+    let readSuccess = false;
+    let readError = null;
+
+    if (exists) {
+      try {
+        const stats = fs.statSync(filePath);
+        sizeBytes = stats.size;
+        
+        const content = fs.readFileSync(filePath, 'utf-8');
+        linesCount = content.split(/\r?\n/).filter(line => line.trim()).length;
+        readSuccess = true;
+      } catch (err: any) {
+        readSuccess = false;
+        readError = err.message || 'Read error';
+      }
+    }
+
+    return {
+      key,
+      fileName: `${key}.csv`,
+      exists,
+      sizeBytes,
+      linesCount,
+      readSuccess,
+      readError,
+      fullPath: filePath
+    };
+  });
+
+  // Check fallback JSON database db-store.json status
+  let localDbPath = path.join(process.cwd(), 'db-store.json');
+  let jsonChosenKey = 'standard';
+  if (process.env.VERCEL) {
+    const backupDbPath = path.join(__dirname, '..', 'db-store.json');
+    const backupDbPath2 = path.join(__dirname, '../../db-store.json');
+    if (!fs.existsSync(localDbPath)) {
+      if (fs.existsSync(backupDbPath)) {
+        localDbPath = backupDbPath;
+        jsonChosenKey = 'backup_level_1';
+      } else if (fs.existsSync(backupDbPath2)) {
+        localDbPath = backupDbPath2;
+        jsonChosenKey = 'backup_level_2';
+      }
+    }
+  }
+
+  const jsonPathsChecked = {
+    standard: path.join(process.cwd(), 'db-store.json'),
+    backup_level_1: typeof __dirname !== 'undefined' ? path.join(__dirname, '..', 'db-store.json') : 'N/A',
+    backup_level_2: typeof __dirname !== 'undefined' ? path.join(__dirname, '../../db-store.json') : 'N/A'
+  };
+
+  const jsonExists = fs.existsSync(localDbPath);
+  let jsonSize = 0;
+  let jsonReadSuccess = false;
+  let jsonReadError = null;
+  let parsedKeysCount: any = {};
+
+  if (jsonExists) {
+    try {
+      const stats = fs.statSync(localDbPath);
+      jsonSize = stats.size;
+      const content = fs.readFileSync(localDbPath, 'utf-8');
+      const parsed = JSON.parse(content);
+      jsonReadSuccess = true;
+      Object.keys(parsed).forEach(k => {
+        if (Array.isArray(parsed[k])) {
+          parsedKeysCount[k] = parsed[k].length;
+        } else if (parsed[k]) {
+          parsedKeysCount[k] = 1;
+        }
+      });
+    } catch (err: any) {
+      jsonReadSuccess = false;
+      jsonReadError = err.message || 'JSON Parse error';
+    }
+  }
+
+  // General recommendation based on findings
+  let overallStatus = 'excellent';
+  let overallMessage = 'All CSV datastore and filesystem integrations are fully active and readable!';
+  let overallRecommendation = 'The server is cleanly running and reading CSV datastore catalogs. Any read operations will succeed perfectly.';
+
+  if (!csvDirExists) {
+    overallStatus = 'error';
+    overallMessage = 'CSV Datastore directory not found.';
+    overallRecommendation = 'Check process permissions or run with database initialization to automatically build csv-data/ directories.';
+  } else if (!isWritable && envInfo.isVercel) {
+    overallStatus = 'warning';
+    overallMessage = 'Local App Directory is read-only (standard Vercel protection).';
+    overallRecommendation = 'Vercel restricts standard writable actions to /tmp directory. To save dynamic records securely, use our Google Drive synchronization tool on the left or integrate your Firebase config!';
+  }
+
+  return {
+    envInfo,
+    csvDir,
+    chosenDirKey,
+    csvDirExists,
+    pathsChecked,
+    isWritable,
+    writeError,
+    filesReport,
+    jsonReport: {
+      dbStorePath: localDbPath,
+      chosenKey: jsonChosenKey,
+      exists: jsonExists,
+      sizeBytes: jsonSize,
+      readSuccess: jsonReadSuccess,
+      readError: jsonReadError,
+      pathsChecked: jsonPathsChecked,
+      tableCounts: parsedKeysCount
+    },
+    status: overallStatus,
+    message: overallMessage,
+    recommendation: overallRecommendation,
+    timestamp: new Date().toISOString()
+  };
+}
