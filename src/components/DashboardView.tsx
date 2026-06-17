@@ -50,19 +50,41 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
       }
     })
     .then(async response => {
-      if (!response.ok) {
-        let text = "";
-        try {
-          const errData = await response.json();
-          text = errData.error || errData.message || `Server returned status ${response.status}`;
-        } catch {
-          text = (await response.text()) || `Server returned status ${response.status}`;
-        }
-        throw new Error(text);
+      let responseText = "";
+      try {
+        responseText = await response.text();
+      } catch (e: any) {
+        throw new Error(`Failed to read response body: ${e.message || String(e)}`);
       }
-      return response.json().catch(() => {
-        throw new Error("Unable to parse a valid JSON payload from the server analytics engine.");
-      });
+
+      let parsedJson: any = null;
+      try {
+        parsedJson = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        if (!response.ok) {
+          throw new Error(responseText.substring(0, 500) || `Server returned status ${response.status}`);
+        } else {
+          throw new Error("Unable to parse a valid JSON payload from the server analytics engine.");
+        }
+      }
+
+      if (!response.ok) {
+        let errorMsg = `Server returned status ${response.status}`;
+        if (parsedJson) {
+          if (typeof parsedJson.error === 'string') {
+            errorMsg = parsedJson.error;
+          } else if (parsedJson.error && typeof parsedJson.error === 'object') {
+            errorMsg = parsedJson.error.message || parsedJson.error.error || JSON.stringify(parsedJson.error);
+          } else if (typeof parsedJson.message === 'string') {
+            errorMsg = parsedJson.message;
+          } else {
+            errorMsg = JSON.stringify(parsedJson);
+          }
+        }
+        throw new Error(errorMsg);
+      }
+
+      return parsedJson;
     })
     .then(res => {
       if (!active) return;
@@ -70,7 +92,15 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
         throw new Error("Empty or malformed payload structure received from server.");
       }
       if (res.error) {
-        throw new Error(res.error);
+        let errorMsg = "";
+        if (typeof res.error === 'string') {
+          errorMsg = res.error;
+        } else if (typeof res.error === 'object') {
+          errorMsg = res.error.message || JSON.stringify(res.error);
+        } else {
+          errorMsg = String(res.error);
+        }
+        throw new Error(errorMsg);
       }
       setData(res);
       setLoading(false);
@@ -78,7 +108,17 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
     .catch(err => {
       if (!active) return;
       console.error("[Dashboard] Error fetching analytics:", err);
-      setFetchError(err.message || String(err));
+      let errMsg = "An unexpected error occurred.";
+      if (err instanceof Error) {
+        errMsg = err.message;
+      } else if (typeof err === 'string') {
+        errMsg = err;
+      } else if (err && typeof err === 'object') {
+        errMsg = (err as any).message || (err as any).error || JSON.stringify(err);
+      } else {
+        errMsg = String(err);
+      }
+      setFetchError(errMsg);
       setLoading(false);
     });
 

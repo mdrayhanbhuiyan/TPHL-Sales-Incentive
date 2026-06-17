@@ -135,7 +135,8 @@ export async function startServer() {
 
   // --- ANALYTICS & DASHBOARD API ---
   app.get('/api/dashboard/analytics', authenticateToken, (req, res) => {
-    const store = getStore();
+    try {
+      const store = getStore();
     const curUser = (req as any).user as User;
 
     let targetSales = [...store.sales];
@@ -577,6 +578,10 @@ export async function startServer() {
       timelineActivities: sortedActivities,
       bonusRules: store.bonusRules
     });
+    } catch (err: any) {
+      console.error("[server.ts] Error compiling dashboard analytics:", err);
+      res.status(500).json({ error: "Internal server error compiling dashboard analytics: " + (err.message || String(err)) });
+    }
   });
 
   // --- PROJECT MANAGEMENT API ---
