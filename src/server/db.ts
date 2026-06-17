@@ -1,11 +1,5 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-export async function getFirebaseDiagnostics() {
-  return {
-    status: 'ok',
-    timestamp: new Date().toISOString()
-  };
-}
 try {
   let config: any = null;
   const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
