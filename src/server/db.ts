@@ -394,8 +394,45 @@ function initCSVDirectory(): void {
 }
 
 function loadStoreFromCSV(): DatabaseStore {
-  const csvDir = path.join(process.cwd(), 'csv-data');
+  let csvDir = path.join(process.cwd(), 'csv-data');
+  if (process.env.VERCEL) {
+    const backupCsvDir = path.join(__dirname, '..', 'csv-data');
+    const backupCsvDir2 = path.join(__dirname, '../../csv-data');
+    if (!fs.existsSync(csvDir)) {
+      if (fs.existsSync(backupCsvDir)) {
+        csvDir = backupCsvDir;
+      } else if (fs.existsSync(backupCsvDir2)) {
+        csvDir = backupCsvDir2;
+      }
+    }
+  }
+
   initCSVDirectory();
+
+  // Load db-store.json as the base/fallback store instead of DEFAULT_STORE!
+  let localDbPath = path.join(process.cwd(), 'db-store.json');
+  if (process.env.VERCEL) {
+    const backupDbPath = path.join(__dirname, '..', 'db-store.json');
+    const backupDbPath2 = path.join(__dirname, '../../db-store.json');
+    if (!fs.existsSync(localDbPath)) {
+      if (fs.existsSync(backupDbPath)) {
+        localDbPath = backupDbPath;
+      } else if (fs.existsSync(backupDbPath2)) {
+        localDbPath = backupDbPath2;
+      }
+    }
+  }
+
+  let baseStore: DatabaseStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+  if (fs.existsSync(localDbPath)) {
+    try {
+      const dbContent = fs.readFileSync(localDbPath, 'utf-8');
+      baseStore = JSON.parse(dbContent);
+      console.log("[db.ts] Pre-loaded backup store from db-store.json successfully.");
+    } catch (err: any) {
+      console.error("[db.ts] Failed to parse db-store.json during loadStoreFromCSV:", err.message);
+    }
+  }
 
   const store: Partial<DatabaseStore> = {};
   const keys: (keyof DatabaseStore)[] = [
@@ -421,25 +458,26 @@ function loadStoreFromCSV(): DatabaseStore {
         const csvContent = fs.readFileSync(filePath, 'utf-8');
         if (key === 'bonusRules') {
           const items = csvToItems(key, csvContent);
-          store[key] = items[0] || DEFAULT_STORE.bonusRules;
+          store[key] = items[0] || baseStore.bonusRules || DEFAULT_STORE.bonusRules;
         } else {
           const parsedItems = csvToItems(key, csvContent);
-          store[key] = parsedItems as any;
+          // Only overwrite our rich baseStore with CSV if CSV actually contains data.
+          // This prevents empty/blank committed CSV files on Vercel from wiping out rich pre-loaded JSON backups.
+          if (parsedItems && parsedItems.length > 0) {
+            store[key] = parsedItems as any;
+          } else if (baseStore[key] !== undefined && baseStore[key].length > 0) {
+            store[key] = baseStore[key] as any;
+          } else {
+            store[key] = parsedItems as any;
+          }
         }
       } else {
-        if (key === 'bonusRules') {
-          store[key] = DEFAULT_STORE[key];
-        } else {
-          store[key] = (DEFAULT_STORE[key] || []) as any;
-        }
+        // Fall back to the structured backup store from db-store.json
+        store[key] = baseStore[key] !== undefined ? baseStore[key] : (DEFAULT_STORE[key] as any);
       }
     } catch (err) {
-      console.error(`[db.ts] Failed to read CSV for key ${key}, falling back to default:`, err);
-      if (key === 'bonusRules') {
-        store[key] = DEFAULT_STORE[key];
-      } else {
-        store[key] = (DEFAULT_STORE[key] || []) as any;
-      }
+      console.error(`[db.ts] Failed to read CSV for key ${key}, falling back to baseStore:`, err);
+      store[key] = baseStore[key] !== undefined ? baseStore[key] : (DEFAULT_STORE[key] as any);
     }
   }
 
@@ -447,16 +485,17 @@ function loadStoreFromCSV(): DatabaseStore {
 }
 
 function saveStoreToCSV(store: DatabaseStore): void {
+  if (process.env.VERCEL) {
+    console.log("[db.ts] Bypassing CSV file saving on Vercel read-only filesystem.");
+    return;
+  }
+
   const csvDir = path.join(process.cwd(), 'csv-data');
   if (!fs.existsSync(csvDir)) {
-    if (process.env.VERCEL) {
-      console.warn("[db.ts] Bypassing csv-data directory creation on Vercel.");
-    } else {
-      try {
-        fs.mkdirSync(csvDir, { recursive: true });
-      } catch (err: any) {
-        console.error("[db.ts] Failed to create csv-data directory:", err.message);
-      }
+    try {
+      fs.mkdirSync(csvDir, { recursive: true });
+    } catch (err: any) {
+      console.error("[db.ts] Failed to create csv-data directory:", err.message);
     }
   }
 
@@ -531,9 +570,34 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Firebase Connection Setup (Intentionally Disabled by Request)
-db = null;
-console.log("[db.ts] Firebase has been disabled by request. Active storage engine: local directory " + path.join(process.cwd(), 'csv-data/*.csv') + ".");
+// Firebase Connection Setup
+try {
+  let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (process.env.VERCEL) {
+    const backupConfigPath = path.join(__dirname, '..', 'firebase-applet-config.json');
+    const backupConfigPath2 = path.join(__dirname, '../../firebase-applet-config.json');
+    if (!fs.existsSync(configPath)) {
+      if (fs.existsSync(backupConfigPath)) {
+        configPath = backupConfigPath;
+      } else if (fs.existsSync(backupConfigPath2)) {
+        configPath = backupConfigPath2;
+      }
+    }
+  }
+
+  if (fs.existsSync(configPath)) {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const firebaseApp = initializeApp(config);
+    db = initializeFirestore(firebaseApp, {});
+    console.log("[db.ts] Firebase Firestore initialized successfully for cloud persistent storage.");
+  } else {
+    console.log("[db.ts] firebase-applet-config.json not found. Falling back to local directory " + path.join(process.cwd(), 'csv-data/*.csv') + ".");
+    db = null;
+  }
+} catch (err: any) {
+  console.error("[db.ts] Failed to initialize Firebase connection, falling back to local files:", err.message);
+  db = null;
+}
 
 // Helper to recursively remove all undefined properties and convert NaN to 0 from an object so Firestore doesn't reject them
 function removeUndefined(obj: any): any {
@@ -631,6 +695,13 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
   } catch (err) {
     console.error("[db.ts] Error saving to CSV storage:", err);
   }
+
+  if (db) {
+    return new Promise<void>((resolve, reject) => {
+      writeTasks.push({ store, resolve, reject });
+      processWriteQueue();
+    });
+  }
 }
 
 // Asynchronously bootstrap the state from CSV storage at server boot-up
@@ -639,6 +710,51 @@ export async function initFirestore(): Promise<void> {
   try {
     cachedStore = loadStoreFromCSV();
     console.log("[db.ts] Local CSV files successfully imported and cached in memory!");
+
+    if (db) {
+      console.log("[db.ts] Fetching state from Firebase Firestore to synchronize database...");
+      try {
+        const keys: (keyof DatabaseStore)[] = [
+          'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
+          'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
+          'notifications', 'projectsOnSale', 'unitRegistrations'
+        ];
+        
+        let loadedFromFirestore = false;
+        const tempStore: any = {};
+        
+        for (const key of keys) {
+          const docRef = doc(db, 'sales_portal_data', key);
+          const docSnap = await withTimeout(
+            getDoc(docRef),
+            3000,
+            `Firestore load timeout for key ${key}`
+          );
+          if (docSnap.exists()) {
+            const docData = docSnap.data();
+            if (docData && docData.data !== undefined) {
+              tempStore[key] = docData.data;
+              loadedFromFirestore = true;
+            }
+          }
+        }
+        
+        if (loadedFromFirestore) {
+          for (const key of keys) {
+            if (tempStore[key] !== undefined) {
+              if (key === 'bonusRules') {
+                cachedStore.bonusRules = tempStore.bonusRules;
+              } else {
+                (cachedStore as any)[key] = tempStore[key];
+              }
+            }
+          }
+          console.log("[db.ts] Successfully synchronized and adopted production dataset from Firebase Firestore!");
+        }
+      } catch (err: any) {
+        console.warn("[db.ts] Gracefully bypassed Firestore read sync on boot:", err.message || err);
+      }
+    }
 
     // Perform migrations or syncs if needed
     let migrated = false;

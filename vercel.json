@@ -3,7 +3,7 @@
   "framework": "vite",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{csv-data/**,db-store.json}"
+      "includeFiles": "**/*.{csv,json}"
     }
   },
   "rewrites": [
