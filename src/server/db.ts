@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, doc, setDoc, getDocs, getDoc, collection, writeBatch } from 'firebase/firestore';
+import { initializeFirestore, doc, setDoc, getDocs, getDoc, getDocFromServer, terminate, collection, writeBatch } from 'firebase/firestore';
 
 import { 
   User, 
@@ -710,6 +710,27 @@ export async function initFirestore(): Promise<void> {
   try {
     cachedStore = loadStoreFromCSV();
     console.log("[db.ts] Local CSV files successfully imported and cached in memory!");
+
+    if (db) {
+      console.log("[db.ts] Verification: testing server connection to Firebase Firestore...");
+      try {
+        const testRef = doc(db, 'sales_portal_data', 'users');
+        await withTimeout(
+          getDocFromServer(testRef),
+          4000,
+          "Firebase Firestore test connection timed out"
+        );
+        console.log("[db.ts] Firestore connection verified successfully!");
+      } catch (err: any) {
+        console.warn("[db.ts] Firebase Firestore server-side connection failed or database in default project is unprovisioned. Reverting to persistent high-performance local CSV database. Details: " + (err.message || err));
+        try {
+          await terminate(db);
+        } catch (e) {
+          // Ignore termination failure
+        }
+        db = null;
+      }
+    }
 
     if (db) {
       console.log("[db.ts] Fetching state from Firebase Firestore to synchronize database...");

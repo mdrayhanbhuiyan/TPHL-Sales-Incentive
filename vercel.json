@@ -3,7 +3,11 @@
   "framework": "vite",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "**/*.{csv,json,cjs}"
+      "includeFiles": [
+        "csv-data/**",
+        "db-store.json",
+        "firebase-applet-config.json"
+      ]
     }
   },
   "rewrites": [
