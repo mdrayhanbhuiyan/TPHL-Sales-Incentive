@@ -10,7 +10,6 @@ import {
   getStore, 
   writeStore, 
   logAction, 
-  addNotification, 
   recalculateAllIncentives,
   recalculateAllIncentivesDirect,
   initFirestore,
