@@ -1,7 +1,4 @@
 
-import type { Firestore } from 'firebase/firestore';
-
-let db: Firestore | null = null;
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import fs from 'fs';
@@ -64,14 +61,3 @@ export interface DatabaseStore {
 export async function getLiveFirestoreBackup() {
   return {};
 }
-export {
-  getStore,
-  writeStore,
-  logAction,
-  recalculateAllIncentives,
-  recalculateAllIncentivesDirect,
-  initFirestore,
-  getFirebaseDiagnostics,
-  addNotification,
-  getLiveFirestoreBackup
-};
