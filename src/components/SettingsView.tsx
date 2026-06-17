@@ -1413,8 +1413,8 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
               </div>
 
               <div className="max-h-64 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
-                {logs.map(log => (
-                  <div key={log.id} className="text-[11px] border-b border-gray-50 pb-2.5 last:border-0 last:pb-0 space-y-1">
+                {logs.map((log, idx) => (
+                  <div key={`${log.id}-${idx}`} className="text-[11px] border-b border-gray-50 pb-2.5 last:border-0 last:pb-0 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-gray-800">{log.action}</span>
                       <span className="font-mono text-gray-400">{log.timestamp.split('T')[1].slice(0, 8)} ({log.timestamp.split('T')[0]})</span>
@@ -1452,13 +1452,13 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             </div>
 
             <div className="max-h-64 overflow-y-auto space-y-2.5 pr-2">
-              {notifList.map(notif => {
+              {notifList.map((notif, idx) => {
                 let badgeCol = "bg-indigo-50 border-indigo-100 text-indigo-800";
                 if (notif.type === 'success') badgeCol = "bg-emerald-50 border-emerald-100 text-emerald-800 font-semibold";
                 else if (notif.type === 'warning') badgeCol = "bg-amber-50 border-amber-100 text-amber-800";
 
                 return (
-                  <div key={notif.id} className="border border-gray-100/50 rounded-xl p-3 bg-gray-50/50 space-y-1">
+                  <div key={`${notif.id}-${idx}`} className="border border-gray-100/50 rounded-xl p-3 bg-gray-50/50 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-[9px] uppercase tracking-wider px-1.5 rounded-md ${badgeCol}`}>{notif.type}</span>
                       <span className="text-[9px] text-gray-400 font-mono">{notif.timestamp.split('T')[1].slice(0, 5)}</span>
