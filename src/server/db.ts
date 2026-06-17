@@ -10,6 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, doc, setDoc, getDocs, getDoc, getDocFromServer, terminate, collection, writeBatch } from 'firebase/firestore';
+import { createClient } from '@supabase/supabase-js';
 
 import { 
   User, 
@@ -144,6 +145,21 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 // Global in-memory cache for fast synchronous access
 let cachedStore: DatabaseStore | null = null;
 let db: any = null;
+let supabaseClient: any = null;
+
+// Initialize Supabase Client
+try {
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const supabaseKey = process.env.SUPABASE_KEY || '';
+  if (supabaseUrl && supabaseKey) {
+    supabaseClient = createClient(supabaseUrl, supabaseKey);
+    console.log("[db.ts] Supabase client initialized successfully with URL: " + supabaseUrl);
+  } else {
+    console.log("[db.ts] Supabase credentials not found in environment (SUPABASE_URL/SUPABASE_KEY empty).");
+  }
+} catch (err: any) {
+  console.error("[db.ts] Failed to initialize Supabase client:", err.message || err);
+}
 
 export const SCHEMA_HEADERS: { [key: string]: string[] } = {
   users: ['id', 'email', 'name', 'role', 'employee_id', 'team_id', 'created_at'],
@@ -667,9 +683,50 @@ async function processWriteQueue(): Promise<void> {
         );
         console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
       }
+
+      if (supabaseClient) {
+        console.log("[db.ts] Synchronizing database state to Supabase...");
+        const keys: (keyof DatabaseStore)[] = [
+          'users',
+          'projects',
+          'salesTeams',
+          'teamProjects',
+          'salesExecutives',
+          'incentiveRules',
+          'bonusRules',
+          'sales',
+          'salesIncentives',
+          'auditLogs',
+          'notifications',
+          'projectsOnSale',
+          'unitRegistrations'
+        ];
+
+        const sanitizedStore = removeUndefined(task.store);
+
+        for (const key of keys) {
+          const keyValue = sanitizedStore[key] !== undefined ? sanitizedStore[key] : [];
+          const { error } = await withTimeout<any>(
+            supabaseClient
+              .from('sales_portal_data')
+              .upsert({ key: key, data: keyValue }, { onConflict: 'key' }),
+            4000,
+            `Supabase write timeout for key ${key}`
+          );
+
+          if (error) {
+            console.error(`[db.ts] Failed to upsert key ${key} to Supabase:`, error.message);
+            if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+              console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+            }
+          }
+        }
+        console.log("[db.ts] Successfully synchronized database state to Supabase!");
+      }
+
       task.resolve();
     } catch (err: any) {
-      console.error("[db.ts] Failed to save state to Firebase Firestore inside queue:", err);
+      console.error("[db.ts] Failed to save state to Firebase/Supabase inside queue:", err);
       task.reject(err);
     }
     writeTasks.shift(); // Remove the completed task
@@ -696,7 +753,7 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
     console.error("[db.ts] Error saving to CSV storage:", err);
   }
 
-  if (db) {
+  if (db || supabaseClient) {
     return new Promise<void>((resolve, reject) => {
       writeTasks.push({ store, resolve, reject });
       processWriteQueue();
@@ -774,6 +831,59 @@ export async function initFirestore(): Promise<void> {
         }
       } catch (err: any) {
         console.warn("[db.ts] Gracefully bypassed Firestore read sync on boot:", err.message || err);
+      }
+    }
+
+    if (supabaseClient) {
+      console.log("[db.ts] Fetching state from Supabase to synchronize database...");
+      try {
+        const keys: (keyof DatabaseStore)[] = [
+          'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
+          'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
+          'notifications', 'projectsOnSale', 'unitRegistrations'
+        ];
+        
+        let loadedFromSupabase = false;
+        const tempStore: any = {};
+        
+        for (const key of keys) {
+          const { data, error } = await withTimeout<any>(
+            supabaseClient
+              .from('sales_portal_data')
+              .select('data')
+              .eq('key', key)
+              .maybeSingle(),
+            4000,
+            `Supabase load timeout for key ${key}`
+          );
+          
+          if (!error && data) {
+            tempStore[key] = data.data;
+            loadedFromSupabase = true;
+          } else if (error) {
+            console.warn(`[db.ts] Supabase error loading key ${key}:`, error.message || error);
+            if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+              console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+            }
+          }
+        }
+        
+        if (loadedFromSupabase) {
+          for (const key of keys) {
+            if (tempStore[key] !== undefined) {
+              if (key === 'bonusRules') {
+                cachedStore.bonusRules = tempStore.bonusRules;
+              } else {
+                (cachedStore as any)[key] = tempStore[key];
+              }
+            }
+          }
+          console.log("[db.ts] Successfully synchronized and adopted production dataset from Supabase!");
+        } else {
+          console.log("[db.ts] No previous data found in Supabase. Supabase database is clean or table is empty.");
+        }
+      } catch (err: any) {
+        console.warn("[db.ts] Gracefully bypassed Supabase read sync on boot:", err.message || err);
       }
     }
 
