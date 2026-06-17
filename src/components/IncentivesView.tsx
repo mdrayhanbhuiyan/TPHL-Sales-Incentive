@@ -601,6 +601,66 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
     toast.success("Ledger report CSV downloaded successfully for offline auditing!");
   };
 
+  // EXPORT SALES CSV for accounting purposes
+  const triggerSalesCSVExport = () => {
+    const list = getFilteredIncentives();
+    
+    const headers = [
+      "Incentive ID",
+      "Sale ID",
+      "Sale Date",
+      "Project Name",
+      "Unit Name",
+      "Floor Number",
+      "Executive Name",
+      "Employee ID",
+      "Team Name",
+      "Base Incentive (BDT)",
+      "Floor Bonus (BDT)",
+      "Target Bonus (BDT)",
+      "Team Bonus (BDT)",
+      "Total Incentive (BDT)",
+      "Month",
+      "Year"
+    ];
+
+    const rows = list.map(item => [
+      item.id || '',
+      item.sale_id || '',
+      item.sale_date || '',
+      item.project_name || '',
+      item.unit_name || '',
+      item.floor_number || 0,
+      item.executive_name || '',
+      item.employee_id || '',
+      item.team_name || '',
+      item.base_incentive || 0,
+      item.floor_bonus || 0,
+      item.target_bonus || 0,
+      item.team_bonus || 0,
+      item.total_incentive || 0,
+      item.month || '',
+      item.year || ''
+    ]);
+
+    let csvString = headers.map(h => `"${h}"`).join(",") + "\n";
+    rows.forEach(r => {
+      const sanitized = r.map(cell => `"${String(cell).replace(/"/g, '""')}"`);
+      csvString += sanitized.join(",") + "\n";
+    });
+
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeFilename = `tphl_accounting_sales_data_${new Date().toISOString().slice(0,10)}.csv`;
+    link.setAttribute("href", url);
+    link.setAttribute("download", safeFilename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Current sales data CSV downloaded successfully for accounting!");
+  };
+
   // EXPORT PDF (Structured HTML printable sheets template popup)
   const triggerPrintPDF = () => {
     // Generate an absolute styling print wrapper and trigger print!
@@ -865,7 +925,7 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
         </div>
 
         {/* EXPORTERS SUITE */}
-        <div className="flex items-center justify-end gap-2 text-xs">
+        <div className="flex items-center justify-end gap-2 text-xs flex-wrap">
           <button
             onClick={triggerPrintPDF}
             className="flex items-center gap-1 px-3 py-2 bg-gray-50 border border-gray-100 hover:bg-gray-100 text-gray-600 font-semibold rounded-xl transition cursor-pointer"
@@ -875,9 +935,16 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
           
           <button
             onClick={triggerExcelExport}
+            className="flex items-center gap-1 px-3 py-2 bg-gray-50 border border-gray-100 hover:bg-gray-100 text-gray-600 font-semibold rounded-xl transition cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-gray-400" /> Export Excel
+          </button>
+
+          <button
+            onClick={triggerSalesCSVExport}
             className="flex items-center gap-1 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl shadow-xs transition cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-100" /> Export Excel
+            <Download className="w-4 h-4 text-emerald-100" /> Download CSV
           </button>
         </div>
       </div>
