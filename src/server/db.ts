@@ -1,5 +1,11 @@
+
+import type { Firestore } from 'firebase/firestore';
+
+let db: Firestore | null = null;
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import fs from 'fs';
+import path from 'path';
 try {
   let config: any = null;
   const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
@@ -51,4 +57,21 @@ try {
 } catch (err) {
   console.error("[db.ts] Failed to initialize Firebase:", err);
 }
+export interface DatabaseStore {
+  [key: string]: any;
+}
 
+export async function getLiveFirestoreBackup() {
+  return {};
+}
+export {
+  getStore,
+  writeStore,
+  logAction,
+  recalculateAllIncentives,
+  recalculateAllIncentivesDirect,
+  initFirestore,
+  getFirebaseDiagnostics,
+  addNotification,
+  getLiveFirestoreBackup
+};
