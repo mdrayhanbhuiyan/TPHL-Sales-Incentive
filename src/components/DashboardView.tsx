@@ -38,8 +38,7 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'sale' | 'milestone' | 'project'>('all');
   const [heatmapMode, setHeatmapMode] = useState<'weekly' | 'kpis'>('weekly');
 
-  useEffect(() => {
-    let active = true;
+  const loadDashboardData = () => {
     setLoading(true);
     setFetchError(null);
 
@@ -87,7 +86,6 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
       return parsedJson;
     })
     .then(res => {
-      if (!active) return;
       if (!res || typeof res !== 'object') {
         throw new Error("Empty or malformed payload structure received from server.");
       }
@@ -106,7 +104,6 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
       setLoading(false);
     })
     .catch(err => {
-      if (!active) return;
       console.error("[Dashboard] Error fetching analytics:", err);
       let errMsg = "An unexpected error occurred.";
       if (err instanceof Error) {
@@ -121,10 +118,10 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
       setFetchError(errMsg);
       setLoading(false);
     });
+  };
 
-    return () => {
-      active = false;
-    };
+  useEffect(() => {
+    loadDashboardData();
   }, [authToken]);
 
   if (loading) {
@@ -138,18 +135,39 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
 
   if (fetchError || !data) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-4 space-y-4 max-w-xl mx-auto text-center hover:scale-101 transition duration-300">
+      <div className="flex flex-col items-center justify-center py-20 px-4 space-y-6 max-w-xl mx-auto text-center hover:scale-101 transition duration-300">
         <div className="p-3 bg-rose-50/75 border border-rose-100 rounded-full text-rose-600">
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
-        <div className="text-xl font-bold text-gray-800 font-sans">Error Loading Dashboard Analytics</div>
+        <div className="space-y-1">
+          <div className="text-xl font-bold text-gray-800 font-sans">Error Loading Dashboard Analytics</div>
+          <p className="text-xs text-gray-400 font-medium">Please verify your server connection, refresh user credentials, or log out and authenticate again.</p>
+        </div>
         <div className="p-4 bg-rose-50/50 border border-rose-100 rounded-2xl text-xs font-mono font-semibold text-rose-700 w-full break-all leading-relaxed text-left">
           <p className="font-bold border-b border-rose-100/50 pb-1 mb-2 text-rose-800">Diag Log Context:</p>
-          <p className="whitespace-pre-wrap">{fetchError || "Empty or invalid response payload structure received."}</p>
+          <p className="whitespace-pre-wrap">
+            {typeof fetchError === 'object' ? JSON.stringify(fetchError, null, 2) : String(fetchError || "Empty or invalid response payload structure received.")}
+          </p>
         </div>
-        <p className="text-xs text-gray-400 font-medium">Please verify your server connection, refresh user credentials, or log out and authenticate again.</p>
+        <div className="flex gap-3 justify-center w-full">
+          <button 
+            onClick={loadDashboardData}
+            className="flex-1 bg-indigo-650 hover:bg-indigo-700 text-white py-2.5 px-4 rounded-xl text-xs font-semibold shadow-xs transition duration-150 cursor-pointer"
+          >
+            🔄 Retry Loading
+          </button>
+          <button 
+            onClick={() => {
+              localStorage.removeItem('tphl_token');
+              window.location.reload();
+            }}
+            className="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-750 py-2.5 px-4 rounded-xl text-xs font-semibold transition duration-150 cursor-pointer"
+          >
+            🚪 Reset Session
+          </button>
+        </div>
       </div>
     );
   }
