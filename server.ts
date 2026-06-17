@@ -2357,6 +2357,281 @@ export async function startServer() {
     }
   });
 
+  // Database Integrity Report Endpoint
+  app.get('/api/system/integrity-report', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const store = getStore();
+      const issues: any[] = [];
+
+      // Create maps for quick lookup of existing entity IDs
+      const projectIds = new Set(store.projects.map(p => p.id));
+      const teamIds = new Set(store.salesTeams.map(t => t.id));
+      const executiveIds = new Set(store.salesExecutives.map(e => e.id));
+      const userIds = new Set(store.users.map(u => u.id));
+      const projectsOnSaleIds = new Set((store.projectsOnSale || []).map(p => p.id));
+
+      // 1. Check Sales records
+      store.sales.forEach((s, idx) => {
+        const saleRef = `Sale index #${idx} (ID: ${s.id || 'missing'})`;
+        if (!s.id) {
+          issues.push({
+            collection: 'sales',
+            level: 'error',
+            type: 'missing_field',
+            message: `${saleRef} is missing its 'id' primary key property.`,
+            details: { index: idx }
+          });
+        }
+        if (!s.project_id) {
+          issues.push({
+            collection: 'sales',
+            level: 'error',
+            type: 'missing_field',
+            message: `${saleRef} has an empty 'project_id' field.`,
+            details: { id: s.id }
+          });
+        } else if (!projectIds.has(s.project_id)) {
+          issues.push({
+            collection: 'sales',
+            level: 'error',
+            type: 'orphaned_reference',
+            message: `${saleRef} has an orphaned reference to Project ID '${s.project_id}' which does not exist in Projects.`,
+            details: { id: s.id, field: 'project_id', value: s.project_id }
+          });
+        }
+
+        if (!s.executive_id) {
+          issues.push({
+            collection: 'sales',
+            level: 'error',
+            type: 'missing_field',
+            message: `${saleRef} has an empty 'executive_id' field.`,
+            details: { id: s.id }
+          });
+        } else if (!executiveIds.has(s.executive_id)) {
+          issues.push({
+            collection: 'sales',
+            level: 'error',
+            type: 'orphaned_reference',
+            message: `${saleRef} has an orphaned reference to Sales Executive ID '${s.executive_id}' which does not exist in Sales Executives.`,
+            details: { id: s.id, field: 'executive_id', value: s.executive_id }
+          });
+        }
+
+        if (!s.unit_name) {
+          issues.push({
+            collection: 'sales',
+            level: 'warning',
+            type: 'missing_field',
+            message: `${saleRef} is missing 'unit_name'.`,
+            details: { id: s.id }
+          });
+        }
+        if (s.floor_number === undefined || s.floor_number === null) {
+          issues.push({
+            collection: 'sales',
+            level: 'warning',
+            type: 'missing_field',
+            message: `${saleRef} is missing 'floor_number'.`,
+            details: { id: s.id }
+          });
+        }
+        if (!s.sale_date) {
+          issues.push({
+            collection: 'sales',
+            level: 'warning',
+            type: 'missing_field',
+            message: `${saleRef} is missing 'sale_date'.`,
+            details: { id: s.id }
+          });
+        }
+      });
+
+      // 2. Check Sales Executives records
+      store.salesExecutives.forEach((exec, idx) => {
+        const execRef = `Sales Executive '${exec.name}' (ID: ${exec.id || 'missing'})`;
+        if (!exec.id) {
+          issues.push({
+            collection: 'salesExecutives',
+            level: 'error',
+            type: 'missing_field',
+            message: `Sales Executive index #${idx} is missing its 'id' primary key property.`,
+            details: { index: idx }
+          });
+        }
+        if (exec.team_id && !teamIds.has(exec.team_id)) {
+          issues.push({
+            collection: 'salesExecutives',
+            level: 'warning',
+            type: 'orphaned_reference',
+            message: `${execRef} lists team ID '${exec.team_id}' but this team does not exist in Teams list.`,
+            details: { id: exec.id, field: 'team_id', value: exec.team_id }
+          });
+        }
+        if (exec.project_id && !projectIds.has(exec.project_id)) {
+          issues.push({
+            collection: 'salesExecutives',
+            level: 'warning',
+            type: 'orphaned_reference',
+            message: `${execRef} lists principal project ID '${exec.project_id}' but this project does not exist in Projects list.`,
+            details: { id: exec.id, field: 'project_id', value: exec.project_id }
+          });
+        }
+        if (!exec.employee_id) {
+          issues.push({
+            collection: 'salesExecutives',
+            level: 'warning',
+            type: 'missing_field',
+            message: `${execRef} is missing 'employee_id'.`,
+            details: { id: exec.id }
+          });
+        }
+      });
+
+      // 3. Check Team Projects junction records
+      (store.teamProjects || []).forEach((tp, idx) => {
+        const tpRef = `TeamProject link index #${idx}`;
+        if (tp.team_id && !teamIds.has(tp.team_id)) {
+          issues.push({
+            collection: 'teamProjects',
+            level: 'error',
+            type: 'orphaned_reference',
+            message: `${tpRef} links to non-existent Team ID '${tp.team_id}'.`,
+            details: { id: tp.id, field: 'team_id', value: tp.team_id }
+          });
+        }
+        if (tp.project_id && !projectIds.has(tp.project_id)) {
+          issues.push({
+            collection: 'teamProjects',
+            level: 'error',
+            type: 'orphaned_reference',
+            message: `${tpRef} links to non-existent Project ID '${tp.project_id}'.`,
+            details: { id: tp.id, field: 'project_id', value: tp.project_id }
+          });
+        }
+      });
+
+      // 4. Check Projects Directory
+      store.projects.forEach((p, idx) => {
+        const projRef = `Project '${p.project_name || 'unnamed'}' (ID: ${p.id || 'missing'})`;
+        if (!p.id) {
+          issues.push({
+            collection: 'projects',
+            level: 'error',
+            type: 'missing_field',
+            message: `Project index #${idx} is missing its 'id' primary key property.`,
+            details: { index: idx }
+          });
+        }
+        if (!p.project_name) {
+          issues.push({
+            collection: 'projects',
+            level: 'error',
+            type: 'missing_field',
+            message: `Project index #${idx} has a blank/empty 'project_name'.`,
+            details: { index: idx }
+          });
+        }
+        if (!p.location) {
+          issues.push({
+            collection: 'projects',
+            level: 'warning',
+            type: 'missing_field',
+            message: `${projRef} is missing 'location'.`,
+            details: { id: p.id }
+          });
+        }
+      });
+
+      // 5. Check Sales Teams
+      store.salesTeams.forEach((t, idx) => {
+        const teamRef = `Sales Team '${t.team_name || 'unnamed'}' (ID: ${t.id || 'missing'})`;
+        if (!t.id) {
+          issues.push({
+            collection: 'salesTeams',
+            level: 'error',
+            type: 'missing_field',
+            message: `Sales Team index #${idx} is missing 'id'.`,
+            details: { index: idx }
+          });
+        }
+        if (t.team_leader && !userIds.has(t.team_leader) && !executiveIds.has(t.team_leader)) {
+          issues.push({
+            collection: 'salesTeams',
+            level: 'warning',
+            type: 'orphaned_reference',
+            message: `${teamRef} specifies leader ID '${t.team_leader}' but nobody with this ID was found in users or sales executives.`,
+            details: { id: t.id, field: 'team_leader', value: t.team_leader }
+          });
+        }
+      });
+
+      // 6. Check Incentive Rules
+      store.incentiveRules.forEach((rule, idx) => {
+        const ruleRef = `IncentiveRule index #${idx} (ID: ${rule.id || 'missing'})`;
+        if (!rule.project_id) {
+          issues.push({
+            collection: 'incentiveRules',
+            level: 'error',
+            type: 'missing_field',
+            message: `${ruleRef} has an empty 'project_id' association.`,
+            details: { id: rule.id }
+          });
+        } else if (!projectIds.has(rule.project_id)) {
+          issues.push({
+            collection: 'incentiveRules',
+            level: 'error',
+            type: 'orphaned_reference',
+            message: `${ruleRef} is linked to Project ID '${rule.project_id}' which does not exist in Projects list.`,
+            details: { id: rule.id, field: 'project_id', value: rule.project_id }
+          });
+        }
+      });
+
+      // 7. Check Unit Registrations
+      if (store.unitRegistrations) {
+        store.unitRegistrations.forEach((reg, idx) => {
+          const regRef = `UnitRegistration index #${idx} for '${reg.unit_name || 'unnamed'}'`;
+          if (reg.project_on_sale_id && !projectsOnSaleIds.has(reg.project_on_sale_id) && !projectIds.has(reg.project_on_sale_id)) {
+            issues.push({
+              collection: 'unitRegistrations',
+              level: 'warning',
+              type: 'orphaned_reference',
+              message: `${regRef} has an orphaned property 'project_on_sale_id' value '${reg.project_on_sale_id}' which does not match any sale visual configuration blocks.`,
+              details: { id: reg.id, field: 'project_on_sale_id', value: reg.project_on_sale_id }
+            });
+          }
+        });
+      }
+
+      const totalIssues = issues.length;
+      const hasErrors = issues.some(iss => iss.level === 'error');
+
+      res.json({
+        summary: {
+          scannedAt: new Date().toISOString(),
+          totalIssues,
+          hasErrors,
+          stats: {
+            salesCount: store.sales.length,
+            projectsCount: store.projects.length,
+            teamsCount: store.salesTeams.length,
+            executivesCount: store.salesExecutives.length
+          }
+        },
+        issues
+      });
+    } catch (err: any) {
+      console.error("[server.ts] Integrity Report generation failed:", err);
+      res.status(500).json({ error: "Failed to run collection integrity analysis: " + err.message });
+    }
+  });
+
   // Export a selected individual table as a standard, Excel-compatible CSV file
   app.get('/api/system/backup-table-csv', authenticateToken, (req, res) => {
     const user = (req as any).user;

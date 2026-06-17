@@ -21,7 +21,9 @@ import {
   Link2,
   LogOut,
   FolderOpen,
-  Search
+  Search,
+  AlertTriangle,
+  ShieldCheck
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
@@ -107,6 +109,33 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [diagResults, setDiagResults] = useState<any | null>(null);
   const [diagLoading, setDiagLoading] = useState<boolean>(false);
   const [diagError, setDiagError] = useState<string | null>(null);
+
+  // Database Integrity Check states
+  const [integrityReport, setIntegrityReport] = useState<any | null>(null);
+  const [integrityLoading, setIntegrityLoading] = useState<boolean>(false);
+  const [integrityError, setIntegrityError] = useState<string | null>(null);
+
+  const runIntegrityCheck = async () => {
+    setIntegrityLoading(true);
+    setIntegrityError(null);
+    try {
+      const res = await fetch('/api/system/integrity-report', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to compile collection integrity analysis.");
+      }
+      const data = await res.json();
+      setIntegrityReport(data);
+      toast.success("Database integrity report completed!");
+    } catch (err: any) {
+      console.error(err);
+      setIntegrityError(err.message || "An unexpected error occurred during database integrity report.");
+      toast.error("Integrity check failed.");
+    } finally {
+      setIntegrityLoading(false);
+    }
+  };
 
   const runDiagnostics = async () => {
     setDiagLoading(true);
@@ -1564,6 +1593,123 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
           </div>
         </div>
       </div>
+
+      {/* Database Integrity Report */}
+      {userRole === 'Admin' && (
+        <div id="settings-database-integrity-card" className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-50 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-sm font-bold text-gray-800">Database Integrity Report</h2>
+              </div>
+              <p className="text-xs text-gray-500 leading-normal">
+                Detect missing required parameters or orphaned reference mappings between Construction Projects, Sales Teams, Executives, and Sales records.
+              </p>
+            </div>
+            <button
+              id="btn-run-integrity-check"
+              onClick={runIntegrityCheck}
+              disabled={integrityLoading}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${integrityLoading ? 'animate-spin' : ''}`} />
+              {integrityLoading ? "Analyzing..." : "Run Integrity Check"}
+            </button>
+          </div>
+
+          {integrityError && (
+            <div id="integrity-error-banner" className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-100 leading-relaxed font-semibold">
+              ⚠️ Analysis failed: {integrityError}
+            </div>
+          )}
+
+          {integrityReport ? (
+            <div id="integrity-report-results" className="space-y-4">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                  <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block">Status</span>
+                  <span className={`text-xs font-bold ${integrityReport.summary.hasErrors ? 'text-rose-600' : 'text-emerald-500'}`}>
+                    {integrityReport.summary.hasErrors ? '⚠️ Errors Found' : '✓ Clean Stat'}
+                  </span>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                  <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block">Total Issues</span>
+                  <span className="text-xs font-mono font-bold text-gray-800">{integrityReport.summary.totalIssues} issues</span>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                  <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block">Projects / Teams</span>
+                  <span className="text-xs font-mono font-bold text-gray-800">
+                    {integrityReport.summary.stats.projectsCount} / {integrityReport.summary.stats.teamsCount}
+                  </span>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                  <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block">Executives / Sales</span>
+                  <span className="text-xs font-mono font-bold text-gray-800">
+                    {integrityReport.summary.stats.executivesCount} / {integrityReport.summary.stats.salesCount}
+                  </span>
+                </div>
+              </div>
+
+              {/* Issues display lists */}
+              {integrityReport.issues.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-8 bg-emerald-50/50 border border-emerald-100/50 rounded-2xl text-center space-y-2">
+                  <ShieldCheck className="w-10 h-10 text-emerald-500" />
+                  <h3 className="text-sm font-bold text-emerald-950">Database references are fully intact!</h3>
+                  <p className="text-xs text-emerald-700 max-w-md leading-normal">
+                    All scanned project keys, team leader associations, executive mappings, and chrono-sales entries are consistent. No orphaned references detected.
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-3xs">
+                  <div className="bg-gray-50 px-4 py-2 border-b border-gray-100">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Identified Issues Log</span>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto divide-y divide-gray-50 bg-white scrollbar-thin">
+                    {integrityReport.issues.map((issue: any, idx: number) => (
+                      <div key={idx} className="p-3 flex items-start gap-3 hover:bg-gray-50 transition text-left">
+                        <span className="shrink-0 mt-0.5">
+                          {issue.level === 'error' ? (
+                            <span className="flex h-2 w-2 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" title="Error"></span>
+                            </span>
+                          ) : (
+                            <span className="flex h-2 w-2 relative">
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" title="Warning"></span>
+                            </span>
+                          )}
+                        </span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[8px] tracking-wider uppercase bg-gray-100 text-gray-600 font-extrabold px-1.5 py-0.5 rounded-sm">
+                              {issue.collection}
+                            </span>
+                            <span className={`text-[8px] tracking-wider uppercase font-bold px-1.5 py-0.5 rounded-sm ${issue.level === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {issue.type.replace('_', ' ')}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-700 font-medium leading-normal">{issue.message}</p>
+                          {issue.details && (
+                            <div className="text-[9px] font-mono text-gray-400 bg-gray-50 p-1 rounded-md border border-gray-100">
+                              Details: {JSON.stringify(issue.details)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center p-6 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+              <p className="text-xs text-gray-400 font-medium">Click "Run Integrity Check" above to search database schemas, structural mapping keys, and cascade chains.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Individual Table CSV manual Backup & Restore */}
       <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xl mt-6 space-y-6">
