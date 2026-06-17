@@ -78,6 +78,16 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [csvImportLoading, setCsvImportLoading] = useState<boolean>(false);
   const [csvIsDragging, setCsvIsDragging] = useState<boolean>(false);
 
+  // Individual Table manual CSV backup & restore states
+  const [selectedTable, setSelectedTable] = useState<string>('sales');
+  const [indCsvFileName, setIndCsvFileName] = useState<string>('');
+  const [indCsvContent, setIndCsvContent] = useState<string>('');
+  const [indCsvError, setIndCsvError] = useState<string | null>(null);
+  const [indCsvLoading, setIndCsvLoading] = useState<boolean>(false);
+  const [indCsvIsDragging, setIndCsvIsDragging] = useState<boolean>(false);
+  const [indCsvStatsRows, setIndCsvStatsRows] = useState<number | null>(null);
+  const [indCsvHeaders, setIndCsvHeaders] = useState<string[]>([]);
+
   // Custom confirmation modal state to prevent INP blocking
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -683,6 +693,169 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     toast.success("CSV Import setup cleared.");
   };
 
+  // Individual Table manual CSV Helper Functions
+  const handleDownloadTableCSV = async () => {
+    try {
+      toast.info(`Generating Excel/CSV export for table '${selectedTable}'...`);
+      const url = `/api/system/backup-table-csv?table=${selectedTable}`;
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (!res.ok) throw new Error("Failed to export individual table in CSV format.");
+      
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", downloadUrl);
+      link.setAttribute("download", `tphl_table_${selectedTable}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Standard CSV table compiled and downloaded for '${selectedTable}'!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download individual table CSV.");
+    }
+  };
+
+  const parseAndValidateIndCSV = (text: string, filename: string) => {
+    setIndCsvError(null);
+    setIndCsvContent('');
+    setIndCsvStatsRows(null);
+    setIndCsvHeaders([]);
+    setIndCsvFileName(filename);
+
+    try {
+      if (!text || text.trim() === '') {
+        throw new Error("Uploaded CSV file is empty.");
+      }
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) {
+        throw new Error("Invalid CSV format! No rows detected.");
+      }
+
+      // Check first line columns
+      const firstLine = lines[0];
+      const headers = firstLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+      if (headers.length === 0 || headers.some(h => !h)) {
+        throw new Error("Invalid CSV headers detected. Ensure column names are in the first row.");
+      }
+
+      setIndCsvHeaders(headers);
+      setIndCsvStatsRows(lines.length - 1);
+      setIndCsvContent(text);
+      toast.success(`Validated raw table CSV file '${filename}' successfully!`);
+    } catch (err: any) {
+      setIndCsvError(err.message || "Failed to parse CSV file.");
+      toast.error(err.message || "Incorrect CSV schema.");
+    }
+  };
+
+  const handleIndCSVDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIndCsvIsDragging(false);
+    setIndCsvError(null);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      setIndCsvError("Unsupported document type. Only files ending with .csv are permitted.");
+      toast.error("Unsupported file format.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateIndCSV(text, file.name);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleIndCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIndCsvError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string || '';
+      parseAndValidateIndCSV(text, file.name);
+    };
+    reader.readAsText(file);
+  };
+
+  const executeIndCSVRestore = () => {
+    if (!indCsvContent) {
+      toast.error("No valid CSV content loaded.");
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Overwrite database table: '${selectedTable}'`,
+      message: `CRITICAL ACTION: Are you sure you want to completely overwrite table '${selectedTable}' with the contents of "${indCsvFileName}"? This operation is irreversible, will wipe current rows inside this collection, and automatically trigger commission cascade recalculations state-wide in-memory.`,
+      confirmText: "Yes, Overwrite & Recalculate Table",
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setIndCsvLoading(true);
+        try {
+          const res = await fetch(`/api/system/restore-table-csv?table=${selectedTable}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: indCsvContent
+          });
+
+          let data: any = {};
+          try {
+            const textResponse = await res.text();
+            try {
+              data = JSON.parse(textResponse);
+            } catch {
+              data = { error: textResponse || `HTTP Error ${res.status}` };
+            }
+          } catch {
+            data = { error: `Network/Server Communication Failure (Status ${res.status})` };
+          }
+
+          if (!res.ok) throw new Error(data.error || `Server Table RESTORE failed.`);
+
+          toast.success(`Successfully restored database table '${selectedTable}'!`);
+          setSuccess(`Wiped and restored table '${selectedTable}' with ${data.count} rows and ran full commission recalculation successfully!`);
+          
+          setIndCsvFileName('');
+          setIndCsvContent('');
+          setIndCsvStatsRows(null);
+          setIndCsvHeaders([]);
+          
+          fetchData();
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          toast.error(err.message || "Failed to import table CSV.");
+          setIndCsvError(err.message || "Import failed.");
+        } finally {
+          setIndCsvLoading(false);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
+
+  const cancelIndCSVRestore = () => {
+    setIndCsvFileName('');
+    setIndCsvContent('');
+    setIndCsvStatsRows(null);
+    setIndCsvHeaders([]);
+    setIndCsvError(null);
+    toast.success("Manual single-table import canceled.");
+  };
+
   const handleCSVDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setCsvIsDragging(false);
@@ -1260,7 +1433,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
 
       {/* CSV Database backup & restore */}
       <div className="mt-6">
-        <h3 className="text-xs font-bold tracking-wider text-gray-400 uppercase mb-4">CSV Master Database Administration (Import/Export)</h3>
+        <h3 className="text-xs font-bold tracking-wider text-gray-400 uppercase mb-4">Data Maintenance</h3>
         
         <div className="grid lg:grid-cols-2 gap-6">
           {/* CSV Export Card */}
@@ -1268,10 +1441,10 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Download className="w-5 h-5 text-emerald-600" />
-                <h2 className="text-sm font-bold text-gray-800">Export All Database Tables to CSV</h2>
+                <h2 className="text-sm font-bold text-gray-800">Download System Backup</h2>
               </div>
               <p className="text-xs text-gray-500 leading-normal">
-                Download your complete portal database in standard, human-readable comma-separated CSV format. This packages all tables (Users, Projects, Sales Teams, Sales Executives, Incentives, Audit Logs, and unit configurations) together inside a single, beautifully organized database snapshot file. Perfect for spreadsheets or cross-compatibility.
+                Download your complete portal database in human-readable CSV format. This triggers a CSV export of all database collections (Users, Projects, Sales Teams, Sales Executives, Incentives, Audit Logs, and more) packaged together inside a single, beautifully organized system backup file.
               </p>
             </div>
             {userRole === 'Admin' ? (
@@ -1279,7 +1452,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                 onClick={handleExportCSVBackup}
                 className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3 rounded-xl shadow-xs transition cursor-pointer mt-4"
               >
-                <Download className="w-4 h-4" /> Export Complete CSV Database Snapshot
+                <Download className="w-4 h-4" /> Download System Backup
               </button>
             ) : (
               <p className="text-xs text-amber-600 italic mt-4">🔒 Protected to platform Administrators only</p>
@@ -1291,10 +1464,10 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Upload className="w-5 h-5 text-emerald-600" />
-                <h2 className="text-sm font-bold text-gray-800">Restore Entire Database from CSV Snapshot</h2>
+                <h2 className="text-sm font-bold text-gray-800">Restore from Backup</h2>
               </div>
               <p className="text-xs text-gray-500 leading-normal">
-                Restore the database or import lists from a previously exported database snapshot CSV file. The system validates headers, maps indexes, checks references and imports all sections cleanly.
+                Restores the entire system state back to Firestore database by uploading your previously downloaded CSV backup snapshot file. This parsed validation is mapped, verified for column consistency, and batch-written directly back to Firestore.
               </p>
             </div>
 
@@ -1372,7 +1545,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                         disabled={csvImportLoading}
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-lg transition shadow-xs text-center cursor-pointer flex items-center justify-center gap-1"
                       >
-                        {csvImportLoading ? "Importing..." : "Inject CSV snapshot"}
+                        {csvImportLoading ? "Importing..." : "Restore from Backup"}
                       </button>
                       <button
                         onClick={cancelCSVBackupImport}
@@ -1390,6 +1563,175 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Individual Table CSV manual Backup & Restore */}
+      <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xl mt-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-xs font-bold tracking-wider text-gray-400 uppercase">Manual Table-by-Table CSV Administration</h3>
+            <h2 className="text-sm font-bold text-gray-800">Direct Individual Table Backup & Restore (Excel / Google Sheets Format)</h2>
+            <p className="text-xs text-gray-500 max-w-2xl leading-normal w-full">
+              Unlike consolidated system snapshots, this tool exports standard, clean individual tables containing no comments, compatible directly with computer spreadsheet editing programs. Select a table, download its current data as a standard column-matching CSV file, and restore or replace table items easily.
+            </p>
+          </div>
+          {userRole === 'Admin' && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="import-table-selector" className="text-[10px] font-bold text-gray-500 uppercase tracking-wide shrink-0">Manage Table:</label>
+              <select
+                id="import-table-selector"
+                value={selectedTable}
+                onChange={(e) => {
+                  setSelectedTable(e.target.value);
+                  cancelIndCSVRestore();
+                }}
+                className="bg-gray-50 text-xs font-bold text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-sky-500 transition cursor-pointer"
+              >
+                <option value="sales">Sales & Unit Transactions (sales.csv)</option>
+                <option value="projects">Construction Projects (projects.csv)</option>
+                <option value="salesExecutives">Sales Executives & Targets (salesExecutives.csv)</option>
+                <option value="salesTeams">Sales Teams & Monthly Targets (salesTeams.csv)</option>
+                <option value="incentiveRules">Project Commission Levels (incentiveRules.csv)</option>
+                <option value="unitRegistrations">Unit Registrations (unitRegistrations.csv)</option>
+                <option value="bonusRules">Global Milestone Bonuses (bonusRules.csv)</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {userRole === 'Admin' ? (
+          <div className="grid md:grid-cols-2 gap-6 pt-2 border-t border-gray-50">
+            {/* Export single table */}
+            <div className="bg-gray-50/50 border border-gray-100/80 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Backup / Download
+                </span>
+                <p className="text-xs text-gray-700 leading-normal">
+                  Export the active <strong>{selectedTable}</strong> collection. This outputs a clean table structure featuring standard headings, ideal for fast spreadsheets auditing or bulk updates.
+                </p>
+                
+                {/* Headers Info block */}
+                <div className="bg-white border border-gray-100 rounded-xl p-3 space-y-1">
+                  <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-bold">Standard Column Schema:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedTable === 'sales' && ['id', 'project_id', 'unit_name', 'unit_measure', 'floor_number', 'sale_number', 'sale_date', 'executive_id', 'project_on_sale_id', 'buyer_name'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'projects' && ['id', 'project_name', 'location', 'unit_measure', 'floors', 'units', 'total_flats', 'land_share_amount', 'status', 'registration', 'created_at'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'salesExecutives' && ['id', 'employee_id', 'name', 'team_id', 'project_id', 'target', 'joining_date', 'monthly_targets'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'salesTeams' && ['id', 'team_name', 'team_leader', 'sales_target', 'monthly_targets'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'incentiveRules' && ['id', 'project_id', 'sale_1_percent', 'sale_2_percent', 'sale_3_percent', 'sale_4_percent', 'sale_5_percent', 'sale_6_percent', 'sale_7_percent', 'first_floor_bonus_percent', 'top_floor_bonus_percent', 'created_at'].slice(0,10).map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'unitRegistrations' && ['id', 'project_on_sale_id', 'unit_name', 'registered', 'registration_date', 'created_at'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                    {selectedTable === 'bonusRules' && ['target_90_bonus', 'target_100_bonus', 'team_target_bonus'].map(h => (
+                      <code key={h} className="text-[9px] bg-gray-50 text-gray-600 px-1 py-0.5 rounded font-mono border border-gray-100">{h}</code>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadTableCSV}
+                className="flex items-center justify-center gap-1.5 w-full bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-sm transition cursor-pointer mt-4"
+              >
+                <Download className="w-4 h-4" /> Export {selectedTable}.csv File
+              </button>
+            </div>
+
+            {/* Import single table */}
+            <div className="bg-gray-50/50 border border-gray-100/80 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Restore / Overwrite Table
+                </span>
+                
+                {!indCsvContent ? (
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setIndCsvIsDragging(true); }}
+                    onDragLeave={() => setIndCsvIsDragging(false)}
+                    onDrop={handleIndCSVDrop}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${
+                      indCsvIsDragging 
+                        ? 'border-sky-500 bg-sky-50/50' 
+                        : 'border-gray-200 bg-white hover:border-sky-400 hover:bg-sky-50/10'
+                    }`}
+                  >
+                    <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                    <p className="text-[10px] font-semibold text-gray-600">
+                      Drag & Drop corrected {selectedTable}.csv here, or
+                    </p>
+                    <label className="text-[10px] text-sky-600 font-bold hover:underline mt-1 cursor-pointer inline-block">
+                      Browse Files
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleIndCSVFileSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-gray-100 rounded-xl p-3.5 space-y-3 shadow-xs">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-0.5 animate-pulse">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Target Destination:</span>
+                        <strong className="text-xs text-sky-700 uppercase">[{selectedTable}] collection</strong>
+                      </div>
+                      <span className="text-[10px] block bg-emerald-50 text-emerald-800 font-bold px-2.5 py-1 rounded-full">
+                        {indCsvStatsRows} items ready
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-[10px] leading-normal text-gray-600">
+                      <p className="font-semibold text-gray-800">Columns parsed successfully:</p>
+                      <div className="flex flex-wrap gap-1 font-mono text-[8px] bg-gray-50 p-2 rounded-lg border border-gray-100 max-h-16 overflow-y-auto">
+                        {indCsvHeaders.map(h => (
+                          <span key={h} className="text-emerald-700 bg-emerald-50 px-1 rounded">{h}</span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1.5">
+                      <button
+                        onClick={executeIndCSVRestore}
+                        disabled={indCsvLoading}
+                        className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-lg transition shadow-xs text-center cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        {indCsvLoading ? "Restoring..." : "Apply & Recalculate Table"}
+                      </button>
+                      <button
+                        onClick={cancelIndCSVRestore}
+                        disabled={indCsvLoading}
+                        className="bg-gray-105 hover:bg-gray-200 disabled:opacity-50 text-gray-600 text-[10px] font-bold px-3 py-2 rounded-lg transition text-center cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {indCsvError && (
+                  <div className="bg-red-50 text-red-700 text-[10px] p-2.5 rounded-lg border border-red-100 leading-normal font-semibold">
+                    ⚠️ Parser Failure: {indCsvError}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-600 italic mt-2">🔒 Managed Tables restoration is reserved for platform Administrators only.</p>
+        )}
       </div>
 
       {/* Grid containing logs & notification trackers */}

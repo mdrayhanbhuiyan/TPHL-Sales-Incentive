@@ -16,7 +16,10 @@ import {
   initFirestore,
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
-  DatabaseStore
+  DatabaseStore,
+  arrayToCSV,
+  csvToItems,
+  SCHEMA_HEADERS
 } from './src/server/db';
 import { 
   User, 
@@ -2351,6 +2354,94 @@ export async function startServer() {
     } catch (err: any) {
       console.error("[server.ts] CSV Backup failed:", err);
       res.status(500).json({ error: "Failed to compile database CSV snapshot: " + err.message });
+    }
+  });
+
+  // Export a selected individual table as a standard, Excel-compatible CSV file
+  app.get('/api/system/backup-table-csv', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    const table = req.query.table as string;
+    if (!table || !SCHEMA_HEADERS[table]) {
+      res.status(400).json({ error: "Invalid or missing collection table name." });
+      return;
+    }
+    try {
+      const store = getStore();
+      const csvData = arrayToCSV(table, store[table as keyof DatabaseStore]);
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="tphl_table_${table}_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvData);
+    } catch (err: any) {
+      console.error(`[server.ts] CSV Table Backup failed for '${table}':`, err);
+      res.status(500).json({ error: `Failed to compile CSV of table '${table}': ` + err.message });
+    }
+  });
+
+  // Restore/Overwrite a selected individual table from a standard CSV file
+  app.post('/api/system/restore-table-csv', authenticateToken, express.text({ limit: '15mb' }), async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    const table = req.query.table as string;
+    if (!table || !SCHEMA_HEADERS[table]) {
+      res.status(400).json({ error: "Invalid or missing collection table name." });
+      return;
+    }
+    try {
+      const csvContent = req.body;
+      if (!csvContent || typeof csvContent !== 'string') {
+        res.status(400).json({ error: "No CSV content sent or invalid formatting." });
+        return;
+      }
+
+      // Convert CSV rows to typed objects
+      const items = csvToItems(table, csvContent);
+
+      const store = getStore();
+      
+      // Update specific key
+      if (table === 'bonusRules') {
+        if (items.length > 0) {
+          store.bonusRules = items[0];
+        } else {
+          store.bonusRules = { target_90_bonus: 2000, target_100_bonus: 3500, team_target_bonus: 5000 };
+        }
+      } else {
+        (store as any)[table] = items;
+      }
+
+      // Force chronological update and cascades recalculation
+      recalculateAllIncentivesDirect(store);
+
+      // Audit register log
+      const auditLog = {
+        id: `log-${crypto.randomUUID()}`,
+        user_id: user.id || 'system',
+        username: user.name || 'System Scheduler',
+        role: user.role || 'System',
+        action: `CSV Table Restore (${table})`,
+        details: `Overwrote table '${table}' from manual standard CSV upload. Imported count: ${items.length} records.`,
+        timestamp: new Date().toISOString()
+      };
+      store.auditLogs.unshift(auditLog);
+      if (store.auditLogs.length > 500) {
+        store.auditLogs = store.auditLogs.slice(0, 500);
+      }
+
+      // Sync active state to persistent directory / firebase queues
+      await writeStore(store);
+
+      res.json({ success: true, count: items.length, table });
+    } catch (err: any) {
+      console.error(`[server.ts] CSV Table Restore failed for '${table}':`, err);
+      res.status(500).json({ error: `Failed to restore table '${table}' from manual CSV: ` + err.message });
     }
   });
 

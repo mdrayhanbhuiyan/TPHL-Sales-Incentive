@@ -145,7 +145,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 let cachedStore: DatabaseStore | null = null;
 let db: any = null;
 
-const SCHEMA_HEADERS: { [key: string]: string[] } = {
+export const SCHEMA_HEADERS: { [key: string]: string[] } = {
   users: ['id', 'email', 'name', 'role', 'employee_id', 'team_id', 'created_at'],
   projects: ['id', 'project_name', 'location', 'unit_measure', 'floors', 'units', 'total_flats', 'land_share_amount', 'first_sale_date', 'status', 'registration', 'created_at'],
   salesTeams: ['id', 'team_name', 'team_leader', 'sales_target', 'monthly_targets'],
@@ -219,7 +219,7 @@ function parseCSVField(key: string, fieldName: string, rawVal: string): any {
   return rawVal;
 }
 
-function csvToItems(key: string, csvContent: string): any[] {
+export function csvToItems(key: string, csvContent: string): any[] {
   if (!csvContent || csvContent.trim() === '') return [];
   
   const entries: string[][] = [];
@@ -286,7 +286,7 @@ function csvToItems(key: string, csvContent: string): any[] {
   });
 }
 
-function arrayToCSV(key: string, data: any[] | any): string {
+export function arrayToCSV(key: string, data: any[] | any): string {
   const headers = SCHEMA_HEADERS[key];
   if (!headers) return '';
 
