@@ -322,62 +322,74 @@ export function arrayToCSV(key: string, data: any[] | any): string {
 }
 
 function initCSVDirectory(): void {
-  const csvDir = path.join(process.cwd(), 'csv-data');
-  if (!fs.existsSync(csvDir)) {
-    fs.mkdirSync(csvDir, { recursive: true });
-  }
-
-  // Load existing backup states from db-store.json if available
-  const localDbPath = path.join(process.cwd(), 'db-store.json');
-  let backupStore: DatabaseStore = DEFAULT_STORE;
-  if (fs.existsSync(localDbPath)) {
-    try {
-      backupStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
-    } catch (err) {
-      console.error("[db.ts] Failed to parse db-store.json for CSV directory seeding, falling back to default store:", err);
+  try {
+    const csvDir = path.join(process.cwd(), 'csv-data');
+    if (!fs.existsSync(csvDir)) {
+      if (process.env.VERCEL) {
+        console.warn("[db.ts] Bypassing csv-data directory creation on Vercel.");
+        return;
+      }
+      fs.mkdirSync(csvDir, { recursive: true });
     }
-  }
 
-  const keys: (keyof DatabaseStore)[] = [
-    'users',
-    'projects',
-    'salesTeams',
-    'teamProjects',
-    'salesExecutives',
-    'incentiveRules',
-    'bonusRules',
-    'sales',
-    'salesIncentives',
-    'auditLogs',
-    'notifications',
-    'projectsOnSale',
-    'unitRegistrations'
-  ];
-
-  for (const key of keys) {
-    const filePath = path.join(csvDir, `${key}.csv`);
-    
-    // Check if the CSV needs to be seeded. It needs seeding if:
-    // 1. It doesn't exist on disk yet.
-    // 2. It exists, but only contains the single header line, and backupStore contains actual records.
-    let needsSeeding = !fs.existsSync(filePath);
-    if (fs.existsSync(filePath)) {
-      const stats = fs.statSync(filePath);
-      if (stats.size <= 200) {
-        const fileContent = fs.readFileSync(filePath, 'utf-8').trim();
-        const linesCount = fileContent.split('\n').filter(Boolean).length;
-        const backupCount = Array.isArray(backupStore[key]) ? (backupStore[key] as any[]).length : 1;
-        if (linesCount <= 1 && backupCount > 0) {
-          needsSeeding = true;
-        }
+    // Load existing backup states from db-store.json if available
+    const localDbPath = path.join(process.cwd(), 'db-store.json');
+    let backupStore: DatabaseStore = DEFAULT_STORE;
+    if (fs.existsSync(localDbPath)) {
+      try {
+        backupStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+      } catch (err) {
+        console.error("[db.ts] Failed to parse db-store.json for CSV directory seeding, falling back to default store:", err);
       }
     }
 
-    if (needsSeeding) {
-      console.log(`[db.ts] Seeding CSV storage for: ${key} from db-store.json backup`);
-      const csvContent = arrayToCSV(key, backupStore[key] !== undefined ? backupStore[key] : DEFAULT_STORE[key]);
-      fs.writeFileSync(filePath, csvContent, 'utf-8');
+    const keys: (keyof DatabaseStore)[] = [
+      'users',
+      'projects',
+      'salesTeams',
+      'teamProjects',
+      'salesExecutives',
+      'incentiveRules',
+      'bonusRules',
+      'sales',
+      'salesIncentives',
+      'auditLogs',
+      'notifications',
+      'projectsOnSale',
+      'unitRegistrations'
+    ];
+
+    for (const key of keys) {
+      const filePath = path.join(csvDir, `${key}.csv`);
+      
+      // Check if the CSV needs to be seeded. It needs seeding if:
+      // 1. It doesn't exist on disk yet.
+      // 2. It exists, but only contains the single header line, and backupStore contains actual records.
+      let needsSeeding = !fs.existsSync(filePath);
+      if (fs.existsSync(filePath)) {
+        const stats = fs.statSync(filePath);
+        if (stats.size <= 200) {
+          const fileContent = fs.readFileSync(filePath, 'utf-8').trim();
+          const linesCount = fileContent.split('\n').filter(Boolean).length;
+          const backupCount = Array.isArray(backupStore[key]) ? (backupStore[key] as any[]).length : 1;
+          if (linesCount <= 1 && backupCount > 0) {
+            needsSeeding = true;
+          }
+        }
+      }
+
+      if (needsSeeding) {
+        if (process.env.VERCEL) {
+          console.warn(`[db.ts] skipping CSV write for '${key}' on Vercel read-only system.`);
+          continue;
+        }
+        console.log(`[db.ts] Seeding CSV storage for: ${key} from db-store.json backup`);
+        const csvContent = arrayToCSV(key, backupStore[key] !== undefined ? backupStore[key] : DEFAULT_STORE[key]);
+        fs.writeFileSync(filePath, csvContent, 'utf-8');
+      }
     }
+  } catch (err: any) {
+    console.warn("[db.ts] Safe warning inside initCSVDirectory:", err.message || err);
   }
 }
 
@@ -437,7 +449,15 @@ function loadStoreFromCSV(): DatabaseStore {
 function saveStoreToCSV(store: DatabaseStore): void {
   const csvDir = path.join(process.cwd(), 'csv-data');
   if (!fs.existsSync(csvDir)) {
-    fs.mkdirSync(csvDir, { recursive: true });
+    if (process.env.VERCEL) {
+      console.warn("[db.ts] Bypassing csv-data directory creation on Vercel.");
+    } else {
+      try {
+        fs.mkdirSync(csvDir, { recursive: true });
+      } catch (err: any) {
+        console.error("[db.ts] Failed to create csv-data directory:", err.message);
+      }
+    }
   }
 
   const keys: (keyof DatabaseStore)[] = [
