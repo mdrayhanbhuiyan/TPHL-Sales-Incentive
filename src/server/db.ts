@@ -58,6 +58,4 @@ export interface DatabaseStore {
   [key: string]: any;
 }
 
-export async function getLiveFirestoreBackup() {
-  return {};
-}
+
