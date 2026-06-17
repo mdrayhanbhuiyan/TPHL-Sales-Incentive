@@ -14,7 +14,6 @@ import {
   recalculateAllIncentivesDirect,
   initFirestore,
   getLiveFirestoreBackup,
-  getFirebaseDiagnostics,
   DatabaseStore
 } from './src/server/db.js';
 import { 
