@@ -3,11 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { startServer } from '../server';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { startServer } = require('../dist/server.cjs');
 
-// Statically import the JSON store to ensure Vercel's NFT (Node File Trace)
-// bundles db-store.json directly in the deployed lambda function.
+// Statically import the JSON store and the compiled bundle to ensure Vercel's NFT (Node File Trace)
+// bundles them directly in the deployed lambda function.
 import '../db-store.json';
+import '../dist/server.cjs';
 
 let cachedApp: any = null;
 
