@@ -52,12 +52,3 @@ try {
   console.error("[db.ts] Failed to initialize Firebase:", err);
 }
 
-export async function getStore() {}
-export async function writeStore() {}
-export async function logAction() {}
-export async function recalculateAllIncentives() {}
-export async function recalculateAllIncentivesDirect() {}
-export async function initFirestore() {}
-export async function getFirebaseDiagnostics() {}
-export async function addNotification() {}
-export async function getLiveFirestoreBackup() {}
