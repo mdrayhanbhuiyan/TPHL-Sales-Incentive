@@ -54,8 +54,5 @@ try {
 } catch (err) {
   console.error("[db.ts] Failed to initialize Firebase:", err);
 }
-export interface DatabaseStore {
-  [key: string]: any;
-}
 
 
