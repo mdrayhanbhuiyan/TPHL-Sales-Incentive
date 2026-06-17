@@ -327,6 +327,17 @@ function initCSVDirectory(): void {
     fs.mkdirSync(csvDir, { recursive: true });
   }
 
+  // Load existing backup states from db-store.json if available
+  const localDbPath = path.join(process.cwd(), 'db-store.json');
+  let backupStore: DatabaseStore = DEFAULT_STORE;
+  if (fs.existsSync(localDbPath)) {
+    try {
+      backupStore = JSON.parse(fs.readFileSync(localDbPath, 'utf-8'));
+    } catch (err) {
+      console.error("[db.ts] Failed to parse db-store.json for CSV directory seeding, falling back to default store:", err);
+    }
+  }
+
   const keys: (keyof DatabaseStore)[] = [
     'users',
     'projects',
@@ -345,9 +356,26 @@ function initCSVDirectory(): void {
 
   for (const key of keys) {
     const filePath = path.join(csvDir, `${key}.csv`);
-    if (!fs.existsSync(filePath)) {
-      console.log(`[db.ts] Creating default CSV storage for: ${key}`);
-      const csvContent = arrayToCSV(key, DEFAULT_STORE[key]);
+    
+    // Check if the CSV needs to be seeded. It needs seeding if:
+    // 1. It doesn't exist on disk yet.
+    // 2. It exists, but only contains the single header line, and backupStore contains actual records.
+    let needsSeeding = !fs.existsSync(filePath);
+    if (fs.existsSync(filePath)) {
+      const stats = fs.statSync(filePath);
+      if (stats.size <= 200) {
+        const fileContent = fs.readFileSync(filePath, 'utf-8').trim();
+        const linesCount = fileContent.split('\n').filter(Boolean).length;
+        const backupCount = Array.isArray(backupStore[key]) ? (backupStore[key] as any[]).length : 1;
+        if (linesCount <= 1 && backupCount > 0) {
+          needsSeeding = true;
+        }
+      }
+    }
+
+    if (needsSeeding) {
+      console.log(`[db.ts] Seeding CSV storage for: ${key} from db-store.json backup`);
+      const csvContent = arrayToCSV(key, backupStore[key] !== undefined ? backupStore[key] : DEFAULT_STORE[key]);
       fs.writeFileSync(filePath, csvContent, 'utf-8');
     }
   }

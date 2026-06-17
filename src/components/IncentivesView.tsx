@@ -15,8 +15,15 @@ import {
   Users, 
   Trophy, 
   ArrowUpRight,
-  Filter
+  Filter,
+  UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  X,
+  Download
 } from 'lucide-react';
+import { useToast } from './Toast';
 
 interface IncentivesProps {
   authToken: string;
@@ -24,6 +31,8 @@ interface IncentivesProps {
 }
 
 export default function IncentivesView({ authToken, userRole }: IncentivesProps) {
+  const { toast } = useToast();
+
   const [incentives, setIncentives] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +45,214 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
   // Report Type Selection
   const [activeReport, setActiveReport] = useState<string>('mon-inc'); 
   // 'mon-sales' | 'mon-inc' | 'exec-perf' | 'team-perf' | 'proj-sales' | 'proj-inc' | 'top-seller' | 'top-earner'
+
+  // CSV Import States
+  const [showImport, setShowImport] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  // Download a Dummy Sales CSV template
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'unit_name',
+      'sale_date',
+      'project_name',
+      'employee_id',
+      'executive_name',
+      'buyer_name',
+      'unit_measure',
+      'floor_number'
+    ];
+    
+    const sampleRows = [
+      ['A-302', '2026-06-15', 'Orchard Point', 'exec-rahim', 'Rahim Ahmed', 'Karim Al Hasan', '1450 SFT', '3'],
+      ['B-501', '2026-06-16', 'Green Valley', 'exec-karim', 'Karim Al Hasan', 'Zareen Tasnim', '1250 SFT', '5']
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...sampleRows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "tphl_sales_import_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.info("Sales CSV import template downloaded!");
+  };
+
+  // CSV Drag and drop / selection handlers
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.name.endsWith('.csv')) {
+        readSalesCsv(file);
+      } else {
+        setCsvError("Only CSV files are supported.");
+        toast.error("Invalid file format. Please upload a .csv file.");
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.name.endsWith('.csv')) {
+        readSalesCsv(file);
+      } else {
+        setCsvError("Only CSV files are supported.");
+        toast.error("Invalid file format. Please upload a .csv file.");
+      }
+    }
+  };
+
+  const readSalesCsv = (file: File) => {
+    setCsvError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) {
+          setCsvError("Uploaded file is empty.");
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+        if (lines.length < 2) {
+          setCsvError("CSV file must contain a header row and at least one data row.");
+          return;
+        }
+
+        // Clean and normalize headers (trim whitespace and lowcase)
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+
+        const required = ['unit_name', 'sale_date'];
+        const missing = required.filter(r => !headers.includes(r));
+        if (missing.length > 0) {
+          setCsvError(`CSV missing required column headers: ${missing.join(', ')}. Please make sure your file contains headers for 'unit_name' and 'sale_date'.`);
+          return;
+        }
+
+        const parsed: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Split line by comma with quote safety
+          const values: string[] = [];
+          let currentVal = '';
+          let inQuotes = false;
+          for (let charIndex = 0; charIndex < line.length; charIndex++) {
+            const char = line[charIndex];
+            if (char === '"' || char === "'") {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+              currentVal = '';
+            } else {
+              currentVal += char;
+            }
+          }
+          values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+
+          const item: any = {};
+          headers.forEach((h, idx) => {
+            item[h] = values[idx] !== undefined ? values[idx] : '';
+          });
+
+          // Validation / Normalization
+          if (!item.unit_name) {
+            item._invalid = true;
+            item._reason = "Unit name is required.";
+          } else if (!item.sale_date) {
+            item._invalid = true;
+            item._reason = "Sale date is required.";
+          } else if (!item.employee_id && !item.executive_name && !item.executive_id) {
+            item._invalid = true;
+            item._reason = "At least one seller identification (employee_id, executive_name, or executive_id) is required.";
+          }
+
+          parsed.push(item);
+        }
+
+        if (parsed.length === 0) {
+          setCsvError("No valid rows could be parsed from the CSV file.");
+        } else {
+          setParsedData(parsed);
+          toast.success(`Parsed ${parsed.length} rows successfully! Review them below.`);
+        }
+      } catch (err) {
+        console.error(err);
+        setCsvError("An error occurred while parsing the CSV file.");
+        toast.error("Failed to parse CSV file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportSubmit = async () => {
+    const validItems = parsedData.filter(d => !d._invalid);
+    if (validItems.length === 0) {
+      toast.error("There are no valid entries to import.");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const response = await fetch('/api/sales/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ items: validItems })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || "Bulk import failed.");
+      }
+
+      const result = await response.json();
+      toast.success(`Successfully imported ${result.count} sales records!`);
+      
+      // Clear out the state
+      setParsedData([]);
+      setShowImport(false);
+      
+      // Re-fetch all calculations & ledger state
+      await fetchIncentivesAndTeams();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to commit CSV rows to repository.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleClearImport = () => {
+    setParsedData([]);
+    setCsvError(null);
+  };
 
   const fetchIncentivesAndTeams = async () => {
     setLoading(true);
@@ -355,34 +572,33 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
 
   // --- ACTIONS EXPORTERS ---
 
-  // EXPORT EXCEL (CSV formatting and triggers)
+  // EXPORT EXCEL (CSV formatting and triggers with Blob safety)
   const triggerExcelExport = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    // Title row
-    csvContent += `"${activeRepObj.title}"\n`;
-    csvContent += `Generated: ${new Date().toISOString()}\n\n`;
+    let csvString = `"${activeRepObj.title}"\n`;
+    csvString += `Generated: ${new Date().toISOString()}\n\n`;
     
     // Headers
-    csvContent += activeRepObj.headers.map(h => `"${h}"`).join(",") + "\n";
+    csvString += activeRepObj.headers.map(h => `"${h}"`).join(",") + "\n";
     
     // Rows
     activeRepObj.rows.forEach(r => {
-      // Remove commas from inside numbers to prevent CSV breakage
-      const sanitized = r.map((cell: any) => `"${String(cell).replace(/"/g, '""').replace(/,/g, '')}"`);
-      csvContent += sanitized.join(",") + "\n";
+      const sanitized = r.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`);
+      csvString += sanitized.join(",") + "\n";
     });
 
     // Sums
-    csvContent += activeRepObj.sums.map(s => `"${String(s).replace(/"/g, '""').replace(/,/g, '')}"`).join(",") + "\n";
+    csvString += activeRepObj.sums.map(s => `"${String(s).replace(/"/g, '""')}"`).join(",") + "\n";
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     const safeFilename = activeRepObj.title.toLowerCase().replace(/\s+/g, "_") + ".csv";
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", safeFilename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success("Ledger report CSV downloaded successfully for offline auditing!");
   };
 
   // EXPORT PDF (Structured HTML printable sheets template popup)
@@ -399,7 +615,176 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Incentive ledger &amp; Reports</h1>
           <p className="mt-1 text-sm text-gray-500 font-medium">Generate operational analyses, inspect commission allocations, and extract documentation sheets.</p>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(!showImport)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition duration-200 cursor-pointer shadow-2xs border border-indigo-100"
+          >
+            <UploadCloud className="w-4 h-4 text-indigo-500" />
+            {showImport ? "Hide Import Suite" : "Import Sales Bookings CSV"}
+          </button>
+        </div>
       </div>
+
+      {/* Collapsible CSV Import Panel */}
+      {showImport && (
+        <div className="bg-white border border-indigo-100 rounded-3xl p-6 shadow-2xs space-y-6">
+          <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <UploadCloud className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Bulk Import Sales Bookings via CSV</h3>
+                <p className="text-[11px] text-gray-400 font-semibold">Upload sales logs to automatically trigger chronological commission &amp; bonus recalculations locally.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => { setShowImport(false); handleClearImport(); }}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Drag & Drop Box */}
+          {parsedData.length === 0 ? (
+            <div
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-2xl p-8 text-center transition flex flex-col items-center justify-center space-y-3 cursor-pointer ${
+                dragActive ? 'border-indigo-500 bg-indigo-50/50 shadow-sm' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+              }`}
+            >
+              <input
+                type="file"
+                id="sales-csv-upload"
+                accept=".csv"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <UploadCloud className="w-10 h-10 text-indigo-400 animate-pulse" />
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-gray-700">Drag &amp; drop your sales CSV log here</p>
+                <p className="text-[11px] text-gray-400">or click to browse your local file system (max. 10MB)</p>
+              </div>
+
+              <label
+                htmlFor="sales-csv-upload"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-150 hover:bg-gray-50 text-gray-600 font-semibold rounded-lg text-[11px] cursor-pointer shadow-2xs transition"
+              >
+                Browse CSV File
+              </label>
+
+              {csvError && (
+                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] flex items-center gap-2 max-w-xl text-left">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{csvError}</span>
+                </div>
+              )}
+
+              {/* Template download link */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDownloadTemplate(); }}
+                className="mt-4 inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-700 font-bold hover:underline"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-500" /> Download Standard Sales Booking Template CSV
+              </button>
+            </div>
+          ) : (
+            // Preview / Validation Table
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 px-2.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-lg">
+                    {parsedData.filter(d => !d._invalid).length} / {parsedData.length} Rows Pass
+                  </div>
+                  <span className="text-xs text-gray-500 font-semibold">Valid sales booking entries mapped successfully</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleClearImport}
+                    className="px-3 py-1.5 bg-white border border-gray-100 hover:bg-gray-50 text-gray-600 font-semibold rounded-lg text-xs transition cursor-pointer"
+                  >
+                    Clear File
+                  </button>
+                  <button
+                    onClick={handleImportSubmit}
+                    disabled={importing || parsedData.filter(d => !d._invalid).length === 0}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-xs cursor-pointer flex items-center gap-1"
+                  >
+                    {importing ? (
+                      <>
+                        <div className="w-3 h-3 rounded-full border border-white border-t-transparent animate-spin inline-block mr-1" />
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-indigo-100" /> Commit &amp; Import Valid Rows
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview Table */}
+              <div className="border border-gray-100 rounded-2xl overflow-hidden max-h-60 overflow-y-auto">
+                <table className="w-full text-left text-[11px] border-collapse bg-white">
+                  <thead>
+                    <tr className="bg-gray-50/50 border-b border-gray-100 font-semibold text-gray-400">
+                      <th className="p-2.5 pl-4">Row</th>
+                      <th className="p-2.5">Unit Name</th>
+                      <th className="p-2.5">Sale Date</th>
+                      <th className="p-2.5">Project</th>
+                      <th className="p-2.5">Seller Identifiers</th>
+                      <th className="p-2.5">Buyer name</th>
+                      <th className="p-2.5">Unit Configs</th>
+                      <th className="p-2.5 pr-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-gray-600">
+                    {parsedData.map((item, idx) => (
+                      <tr key={idx} className={`hover:bg-gray-50/50 ${item._invalid ? 'bg-rose-50/15' : ''}`}>
+                        <td className="p-2.5 pl-4 text-gray-400 font-mono">#{idx + 1}</td>
+                        <td className="p-2.5 font-bold text-gray-800">{item.unit_name || <span className="text-rose-400 italic">None</span>}</td>
+                        <td className="p-2.5 font-mono">{item.sale_date || <span className="text-rose-400 italic">None</span>}</td>
+                        <td className="p-2.5 font-semibold text-gray-700">{item.project_name || <span className="text-gray-400 italic">(Default)</span>}</td>
+                        <td className="p-2.5 font-semibold text-gray-700">
+                          {item.employee_id || item.executive_name ? (
+                            `${item.employee_id || ''} ${item.executive_name || ''}`.trim()
+                          ) : (
+                            <span className="text-rose-400 italic">None</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-gray-500">{item.buyer_name || '-'}</td>
+                        <td className="p-2.5 text-gray-500 font-mono">
+                          {item.unit_measure || 'Default'} {item.floor_number ? `(L${item.floor_number})` : ''}
+                        </td>
+                        <td className="p-2.5 pr-4 text-center">
+                          {item._invalid ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-lg border border-rose-100" title={item._reason}>
+                              <AlertCircle className="w-3 h-3 text-rose-500" /> Error
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-lg border border-emerald-100">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Valid
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-gray-400 font-semibold flex items-center gap-1 select-none">
+                <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> Invalid rows are marked in red and will be skipped automatically on import. Click "Commit &amp; Import" to save.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Reports Directory tabs selectors */}
       <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-2xs space-y-4">
