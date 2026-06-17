@@ -991,7 +991,14 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                   </p>
                   {diagResults.connectionTest.status !== 'success' && (
                     <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed max-w-2xl bg-white border border-gray-100 rounded-xl p-3">
-                      <strong className="text-rose-700">💡 Troubleshooting raw query failure:</strong> Ensure that your security rules are correctly deployed and allow reads from this path, your database region is matching, and network/service configuration holds no active blocks.
+                      <div>
+                        <strong className="text-rose-700">💡 Troubleshooting raw query failure:</strong> Ensure that your security rules are correctly deployed and allow reads from this path, your database region is matching, and network/service configuration holds no active blocks.
+                      </div>
+                      {diagResults.connectionTest.recommendation && (
+                        <div className="mt-2 text-[10px] text-indigo-700 font-bold bg-indigo-50/50 border-t border-indigo-100/50 pt-2 flex items-center gap-1.5 selection:bg-indigo-100">
+                          <span>👉</span> <span>{diagResults.connectionTest.recommendation}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
