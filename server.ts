@@ -14,7 +14,6 @@ import {
   recalculateAllIncentivesDirect,
   initFirestore,
   getFirebaseDiagnostics,
-  addNotification,
 } from './src/server/db.js';
 import { 
   User, 
