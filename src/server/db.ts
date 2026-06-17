@@ -8,8 +8,6 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { initializeApp } from 'firebase/app';
-import { initializeFirestore, doc, setDoc, getDocs, getDoc, getDocFromServer, terminate, collection, writeBatch } from 'firebase/firestore';
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -144,7 +142,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 
 // Global in-memory cache for fast synchronous access
 let cachedStore: DatabaseStore | null = null;
-let db: any = null;
 let supabaseClient: any = null;
 
 // Initialize Supabase Client
@@ -542,78 +539,7 @@ function saveStoreToCSV(store: DatabaseStore): void {
   }
 }
 
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
 
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  }
-}
-
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: null,
-      email: null,
-      emailVerified: null,
-      isAnonymous: null,
-      tenantId: null,
-      providerInfo: []
-    },
-    operationType,
-    path
-  };
-  console.error('[db.ts] Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-// Firebase Connection Setup
-try {
-  let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (process.env.VERCEL) {
-    const backupConfigPath = path.join(__dirname, '..', 'firebase-applet-config.json');
-    const backupConfigPath2 = path.join(__dirname, '../../firebase-applet-config.json');
-    if (!fs.existsSync(configPath)) {
-      if (fs.existsSync(backupConfigPath)) {
-        configPath = backupConfigPath;
-      } else if (fs.existsSync(backupConfigPath2)) {
-        configPath = backupConfigPath2;
-      }
-    }
-  }
-
-  if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    const firebaseApp = initializeApp(config);
-    db = initializeFirestore(firebaseApp, {});
-    console.log("[db.ts] Firebase Firestore initialized successfully for cloud persistent storage.");
-  } else {
-    console.log("[db.ts] firebase-applet-config.json not found. Falling back to local directory " + path.join(process.cwd(), 'csv-data/*.csv') + ".");
-    db = null;
-  }
-} catch (err: any) {
-  console.error("[db.ts] Failed to initialize Firebase connection, falling back to local files:", err.message);
-  db = null;
-}
 
 // Helper to recursively remove all undefined properties and convert NaN to 0 from an object so Firestore doesn't reject them
 function removeUndefined(obj: any): any {
@@ -651,39 +577,6 @@ async function processWriteQueue(): Promise<void> {
   while (writeTasks.length > 0) {
     const task = writeTasks[0];
     try {
-      if (db) {
-        const keys: (keyof DatabaseStore)[] = [
-          'users',
-          'projects',
-          'salesTeams',
-          'teamProjects',
-          'salesExecutives',
-          'incentiveRules',
-          'bonusRules',
-          'sales',
-          'salesIncentives',
-          'auditLogs',
-          'notifications',
-          'projectsOnSale',
-          'unitRegistrations'
-        ];
-
-        const sanitizedStore = removeUndefined(task.store);
-        const batch = writeBatch(db);
-
-        for (const key of keys) {
-          const docRef = doc(db, 'sales_portal_data', key);
-          batch.set(docRef, { data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : [] });
-        }
-
-        await withTimeout(
-          batch.commit(),
-          4000,
-          "Firestore write batch commit timed out after 4 seconds"
-        );
-        console.log("[db.ts] Successfully synchronized database state to Firebase Firestore!");
-      }
-
       if (supabaseClient) {
         console.log("[db.ts] Synchronizing database state to Supabase...");
         const keys: (keyof DatabaseStore)[] = [
@@ -753,7 +646,7 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
     console.error("[db.ts] Error saving to CSV storage:", err);
   }
 
-  if (db || supabaseClient) {
+  if (supabaseClient) {
     return new Promise<void>((resolve, reject) => {
       writeTasks.push({ store, resolve, reject });
       processWriteQueue();
@@ -767,72 +660,6 @@ export async function initFirestore(): Promise<void> {
   try {
     cachedStore = loadStoreFromCSV();
     console.log("[db.ts] Local CSV files successfully imported and cached in memory!");
-
-    if (db) {
-      console.log("[db.ts] Verification: testing server connection to Firebase Firestore...");
-      try {
-        const testRef = doc(db, 'sales_portal_data', 'users');
-        await withTimeout(
-          getDocFromServer(testRef),
-          4000,
-          "Firebase Firestore test connection timed out"
-        );
-        console.log("[db.ts] Firestore connection verified successfully!");
-      } catch (err: any) {
-        console.warn("[db.ts] Firebase Firestore server-side connection failed or database in default project is unprovisioned. Reverting to persistent high-performance local CSV database. Details: " + (err.message || err));
-        try {
-          await terminate(db);
-        } catch (e) {
-          // Ignore termination failure
-        }
-        db = null;
-      }
-    }
-
-    if (db) {
-      console.log("[db.ts] Fetching state from Firebase Firestore to synchronize database...");
-      try {
-        const keys: (keyof DatabaseStore)[] = [
-          'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
-          'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
-          'notifications', 'projectsOnSale', 'unitRegistrations'
-        ];
-        
-        let loadedFromFirestore = false;
-        const tempStore: any = {};
-        
-        for (const key of keys) {
-          const docRef = doc(db, 'sales_portal_data', key);
-          const docSnap = await withTimeout(
-            getDoc(docRef),
-            3000,
-            `Firestore load timeout for key ${key}`
-          );
-          if (docSnap.exists()) {
-            const docData = docSnap.data();
-            if (docData && docData.data !== undefined) {
-              tempStore[key] = docData.data;
-              loadedFromFirestore = true;
-            }
-          }
-        }
-        
-        if (loadedFromFirestore) {
-          for (const key of keys) {
-            if (tempStore[key] !== undefined) {
-              if (key === 'bonusRules') {
-                cachedStore.bonusRules = tempStore.bonusRules;
-              } else {
-                (cachedStore as any)[key] = tempStore[key];
-              }
-            }
-          }
-          console.log("[db.ts] Successfully synchronized and adopted production dataset from Firebase Firestore!");
-        }
-      } catch (err: any) {
-        console.warn("[db.ts] Gracefully bypassed Firestore read sync on boot:", err.message || err);
-      }
-    }
 
     if (supabaseClient) {
       console.log("[db.ts] Fetching state from Supabase to synchronize database...");
@@ -1334,21 +1161,67 @@ export async function getLiveFirestoreBackup(): Promise<DatabaseStore> {
 }
 
 export async function getFirebaseDiagnostics(): Promise<any> {
+  const isSupabaseConfigured = !!(process.env.SUPABASE_URL && process.env.SUPABASE_KEY);
+  
+  let connectionStatus = 'failed';
+  let connectionMessage = 'No Supabase connection configured yet. The app is running on high-performance local CSV database fallback mode.';
+  let connectionRecommendation = 'Go to your settings, find environment variables, and configure "SUPABASE_URL" and "SUPABASE_KEY" to connect live.';
+  
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      // Test querying the sales_portal_data relation
+      const { data, error } = await supabaseClient
+        .from('sales_portal_data')
+        .select('key')
+        .limit(1);
+        
+      if (!error) {
+        connectionStatus = 'success';
+        connectionMessage = 'Live connection verified successfully! All records sync in real-time with your live Supabase database.';
+        connectionRecommendation = 'Everything is fully active and working!';
+      } else {
+        connectionStatus = 'warning';
+        connectionMessage = `Connected to client but database query failed: ${error.message}`;
+        if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+          connectionRecommendation = 'Table "sales_portal_data" is missing inside your Supabase schema! Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);';
+        } else {
+          connectionRecommendation = 'Check your database permissions, policy rules, or schema details in Supabase.';
+        }
+      }
+    } catch (err: any) {
+      connectionStatus = 'failed';
+      connectionMessage = `Exception during connection test: ${err.message || err}`;
+      connectionRecommendation = 'Ensure your internet connection is healthy and the SUPABASE_URL you supplied is fully accessible.';
+    }
+  }
+
+  let dbHost = 'N/A';
+  if (process.env.SUPABASE_URL) {
+    try {
+      dbHost = new URL(process.env.SUPABASE_URL).hostname;
+    } catch (e) {
+      dbHost = process.env.SUPABASE_URL;
+    }
+  }
+
   const result: any = {
-    firebaseConfigPathExists: false,
-    firebaseConfigFound: false,
-    loadedFrom: 'CSV Storage System',
-    configKeysPresent: [],
-    projectId: 'Local Applet Instance',
-    firestoreDatabaseId: 'Local CSV Directory Storage',
-    authDomain: 'Local',
-    firestoreInitialized: false,
+    firebaseConfigPathExists: isSupabaseConfigured,
+    firebaseConfigFound: isSupabaseConfigured,
+    loadedFrom: isSupabaseConfigured ? 'Live Supabase Cloud Database' : 'Persistent Local CSV Storage',
+    configKeysPresent: isSupabaseConfigured ? ['SUPABASE_URL', 'SUPABASE_KEY'] : [],
+    projectId: dbHost,
+    firestoreDatabaseId: 'sales_portal_data (Table)',
+    authDomain: 'supabase.co',
+    firestoreInitialized: isSupabaseConfigured,
     connectionTest: {
-      status: 'success',
-      message: 'Active Database Mode: local CSV table files are now fully active under csv-data/*.csv',
-      recommendation: 'CSV persistence is fully operational! Your data is stored directly in structured CSV tables in your project directory.'
+      status: connectionStatus,
+      message: connectionMessage,
+      recommendation: connectionRecommendation
     },
-    envVars: {}
+    envVars: {
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_KEY: !!process.env.SUPABASE_KEY,
+    }
   };
   return result;
 }

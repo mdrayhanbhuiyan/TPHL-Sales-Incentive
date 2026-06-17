@@ -1151,15 +1151,15 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
         )}
       </div>
 
-      {/* Firebase & Firestore Connection Diagnostics Panel */}
+      {/* Supabase Connection Diagnostics Panel */}
       <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-100 pb-5">
           <div className="flex items-center gap-3">
             <Database className="w-6 h-6 text-indigo-600 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-gray-800 font-sans tracking-tight">Firebase &amp; Firestore Connection Diagnostics</h2>
+              <h2 className="text-sm font-bold text-gray-800 font-sans tracking-tight">Supabase Connection Diagnostics</h2>
               <p className="text-[11px] text-gray-400 font-medium leading-relaxed">
-                Analyze live cloud database communication metrics and detect environment key mismatches or unauthorized domain blocks.
+                Analyze live Supabase database connection health, check schema table existences, and verify environment keys setup.
               </p>
             </div>
           </div>
@@ -1211,17 +1211,17 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                     }`}>
                       {diagResults.connectionTest.status}
                     </span>
-                    <span className="text-[11px] text-gray-400 font-mono">Query: read sales_portal_data/projects</span>
+                    <span className="text-[11px] text-gray-400 font-mono">Query: read sales_portal_data</span>
                   </div>
                   <p className="text-xs font-semibold text-gray-800">
                     {diagResults.connectionTest.status === 'success' 
                       ? diagResults.connectionTest.message 
-                      : `Query failed: ${diagResults.connectionTest.error}`}
+                      : `Query failed: ${diagResults.connectionTest.message}`}
                   </p>
                   {diagResults.connectionTest.status !== 'success' && (
                     <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed max-w-2xl bg-white border border-gray-100 rounded-xl p-3">
                       <div>
-                        <strong className="text-rose-700">💡 Troubleshooting raw query failure:</strong> Ensure that your security rules are correctly deployed and allow reads from this path, your database region is matching, and network/service configuration holds no active blocks.
+                        <strong className="text-rose-700">💡 Troubleshooting query failure:</strong> Ensure that your Supabase project holds a table named <code>sales_portal_data</code> with the correct columns, and your API keys are correct.
                       </div>
                       {diagResults.connectionTest.recommendation && (
                         <div className="mt-2 text-[10px] text-indigo-700 font-bold bg-indigo-50/50 border-t border-indigo-100/50 pt-2 flex items-center gap-1.5 selection:bg-indigo-100">
@@ -1238,14 +1238,14 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
             <div className="grid md:grid-cols-2 gap-6">
               {/* Configuration Status Info */}
               <div className="space-y-3.5 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs">
-                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Server Firebase Configurations</h4>
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Server Supabase Configurations</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500 font-medium">Config File Path (Local)</span>
+                    <span className="text-gray-500 font-medium">Supabase Connection State</span>
                     <span className={`font-semibold px-2 py-0.5 rounded-sm ${
                       diagResults.firebaseConfigPathExists ? 'bg-emerald-50 text-emerald-700 text-[10px]' : 'bg-rose-50 text-rose-700 text-[10px]'
                     }`}>
-                      {diagResults.firebaseConfigPathExists ? 'Detected on system' : 'Missing'}
+                      {diagResults.firebaseConfigPathExists ? 'Active / Configured' : 'Inactive'}
                     </span>
                   </div>
 
@@ -1257,21 +1257,21 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500 font-medium">Project ID</span>
+                    <span className="text-gray-500 font-medium">Supabase Endpoint</span>
                     <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.projectId}>
                       {diagResults.projectId || 'N/A'}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500 font-medium">Firestore Database ID</span>
+                    <span className="text-gray-500 font-medium">Database Table Name</span>
                     <span className="font-mono text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.firestoreDatabaseId}>
                       {diagResults.firestoreDatabaseId || 'N/A'}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500 font-medium">Authentication Domain</span>
+                    <span className="text-gray-500 font-medium">Standard Provider</span>
                     <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded-sm text-[10px] truncate max-w-44" title={diagResults.authDomain}>
                       {diagResults.authDomain || 'N/A'}
                     </span>
@@ -1279,15 +1279,14 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
                 </div>
               </div>
 
-              {/* Vercel Environment variables Mapping */}
+              {/* Environment variables Mapping */}
               <div className="space-y-3.5 border border-gray-100 rounded-2xl p-4.5 bg-white shadow-3xs">
-                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Vercel Environment Keys Mapped</h4>
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-left">Supabase Environment Keys</h4>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin">
                   {Object.entries(diagResults.envVars).map(([key, isPresent]) => {
-                    const cleanKey = key.replace('_present', '');
                     return (
                       <div key={key} className="flex justify-between items-center text-xs border-b border-gray-50 pb-1.5 last:border-0 last:pb-0">
-                        <span className="font-mono text-[10px] text-gray-500 selection:bg-indigo-50">{cleanKey}</span>
+                        <span className="font-mono text-[10px] text-gray-500 selection:bg-indigo-50">{key}</span>
                         <span className={`text-[10px] font-bold flex items-center gap-1 ${isPresent ? 'text-emerald-600' : 'text-gray-400 font-normal'}`}>
                           {isPresent ? 'Mapped ✅' : 'Not set ⚠️'}
                         </span>
@@ -1298,28 +1297,33 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
               </div>
             </div>
 
-            {/* Vercel Unauthorized-Domain Warn Guide */}
-            <div className="bg-amber-50/60 border border-amber-200/50 rounded-2xl p-5 space-y-3.5">
-              <div className="flex items-center gap-2 text-amber-800 font-semibold">
-                <HelpCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                <h3 className="text-xs font-bold leading-none">Solving 'unauthorized-domain' Errors on Vercel Deployments</h3>
+            {/* Supabase Schema Query Helper */}
+            <div className="bg-indigo-50/60 border border-indigo-200/50 rounded-2xl p-5 space-y-3.5">
+              <div className="flex items-center gap-2 text-indigo-900 font-semibold">
+                <HelpCircle className="w-5 h-5 text-indigo-600 shrink-0" />
+                <h3 className="text-xs font-bold leading-none">Adding Required Schema to Your Supabase Project</h3>
               </div>
-              <div className="text-xs text-amber-800 leading-relaxed font-semibold space-y-2.5 text-left">
+              <div className="text-xs text-indigo-900 leading-relaxed font-semibold space-y-2.5 text-left">
                 <p>
-                  When your application is hosted on <strong>Vercel</strong> under your private subdomain or custom domains, Firebase Authentication will reject login popup hooks and return an <code>auth/unauthorized-domain</code> error if the domain is not allowlisted in Google.
+                  To sync data smoothly with Supabase, you must create a lookup table inside your database utilizing the query script below.
                 </p>
-                <div className="bg-white/80 rounded-xl p-3 border border-amber-200/40 space-y-1.5">
-                  <p className="font-bold text-amber-900">Follow these exact instructions to authorize Vercel domains:</p>
-                  <ol className="list-decimal pl-4 space-y-1 text-amber-800 leading-relaxed">
-                    <li>Copy your Vercel deployment URL (e.g. <code>tphl-incentives.vercel.app</code>). Ensure you omit the protocol (<code>https://</code>).</li>
-                    <li>Go to the <a href={`https://console.firebase.google.com/project/${diagResults.projectId || 'your-project-id'}/authentication/settings`} target="_blank" rel="noopener noreferrer" className="underline font-bold text-indigo-700 hover:text-indigo-800">Firebase Console Settings</a> (Authentication &gt; Settings &gt; Authorized domains).</li>
-                    <li>Click <strong>Add domain</strong> and paste your Vercel URL.</li>
-                    <li>Save changes. Authorized domains sync within 60 seconds of updating.</li>
+                <div className="bg-slate-900 text-slate-100 rounded-xl p-4 font-mono text-[10px] leading-relaxed relative selection:bg-slate-700">
+                  <pre className="overflow-x-auto">
+{`CREATE TABLE IF NOT EXISTS sales_portal_data (
+  key text PRIMARY KEY,
+  data jsonb NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);`}
+                  </pre>
+                </div>
+                <div className="bg-white/80 rounded-xl p-3 border border-indigo-200/40 space-y-1.5">
+                  <p className="font-bold text-indigo-950">Follow these simple steps:</p>
+                  <ol className="list-decimal pl-4 space-y-1 text-indigo-900 leading-relaxed">
+                    <li>Log in to your <strong>Supabase Dashboard</strong> and open your project.</li>
+                    <li>Click on the <strong>SQL Editor</strong> in the left sidebar menu.</li>
+                    <li>Click <strong>New query</strong>, paste the SQL snippet shown above, and click <strong>Run</strong>.</li>
                   </ol>
                 </div>
-                <p className="text-[11px] text-amber-700 italic font-medium">
-                  Note: Always ensure the environment variable names (such as <code>FIREBASE_API_KEY</code>, <code>FIREBASE_PROJECT_ID</code>, <code>FIREBASE_AUTH_DOMAIN</code> etc.) configured in your Vercel dash match local definitions precisely!
-                </p>
               </div>
             </div>
           </div>
