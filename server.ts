@@ -13,7 +13,8 @@ import {
   recalculateAllIncentives,
   recalculateAllIncentivesDirect,
   initFirestore,
-  getFirebaseDiagnostics,
+  getFirebaseDiagnostics
+  
 } from './src/server/db.js';
 import { 
   User, 
