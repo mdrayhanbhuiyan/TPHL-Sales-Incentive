@@ -1,0 +1,72 @@
+id,user_id,username,role,action,details,timestamp
+log-302e6201-dc87-4b1c-ac86-a43d672d9a07,u-admin,TPHL Management,Admin,Database CSV Backup,Downloaded a database state backup in CSV compound format.,2026-06-17T08:05:14.207Z
+log-62aa1ef5-efa5-4824-95c7-6850a2337a1c,u-admin,TPHL Management,Admin,Database Restore,Successfully uploaded and restored database state snapshot files.,2026-06-17T08:04:54.422Z
+log-deee47a9-2de2-4fee-b5c7-0d6fd1deb869,u-admin,TPHL Management,Admin,Database Backup,Downloaded a database state backup.,2026-06-16T11:25:14.516Z
+log-09c59725-e692-4f5d-b7e3-9b9d37655e4d,u-admin,TPHL Management,Admin,Database Backup,Downloaded a database state backup.,2026-06-16T11:24:22.226Z
+log-022f300b-e511-4bf3-9ddf-c9f89190ccb2,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '1B' registration to: Yes (2026-06-16).,2026-06-16T09:54:17.671Z
+log-7758aa3e-adbf-4cfa-ba87-3978bee53782,u-admin,TPHL Management,Admin,Sales Entry,Added sales entry for unit '1B' in project 'Residential (1550-  3200)' sold by Shafia Afrin Shahana.,2026-06-16T09:54:04.892Z
+log-bb0f20ef-0c75-4a6c-8b63-62fe850f106b,u-admin,TPHL Management,Admin,Edit Project On Sale,Updated pre-sale project details for 'The Premium Canvas of Happiness'.,2026-06-16T09:53:34.461Z
+log-b18ba089-b57b-489f-9f41-4e3711d25f16,u-admin,TPHL Management,Admin,Edit Project On Sale,Updated pre-sale project details for 'The Premium Canvas of Happiness'.,2026-06-16T09:52:25.325Z
+log-17e1a407-2f5b-45ee-89ef-6eb28bcd90a3,u-admin,TPHL Management,Admin,Delete Sale,Deleted sale entry ID 'sale-d04fd883'.,2026-06-10T09:55:15.507Z
+log-f95aff17-b259-44cb-8e00-3006e1410b37,u-admin,TPHL Management,Admin,Delete Sale,Deleted sale entry ID 'sale-c83b95c7'.,2026-06-10T09:55:12.049Z
+log-af38ea6a-4978-406e-9199-1d48789716ee,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '15A' registration to: No (No Date).,2026-06-10T09:54:59.342Z
+log-f7ea34ec-fba6-498c-8d7d-c137d7df4254,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '15A' registration to: No (No Date).,2026-06-10T09:54:54.766Z
+log-a5fd0cf3-9e2a-4e4e-ae5d-62819d707e9b,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '17A' registration to: No (No Date).,2026-06-10T09:54:51.290Z
+log-f16d0c38-370f-466b-a6ee-7cd0c87ee922,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '17A' registration to: Yes (2026-06-10).,2026-06-10T09:34:34.481Z
+log-dc1c2ad7-d0c9-4b04-b74a-4138c6dd28d7,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '15A' registration to: Yes (2026-06-10).,2026-06-10T09:34:30.961Z
+log-3d566232-8bb4-4682-a71a-dce5add75532,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '1A' registration to: No (No Date).,2026-06-10T09:32:55.180Z
+log-76cdaf63-fbd3-4a04-9947-c7d41908b252,u-admin,TPHL Management,Admin,Sales Entry,Added sales entry for unit '17A' in project 'Residential (1550-  3200)' sold by Shafia Afrin Shahana.,2026-06-10T09:18:13.126Z
+log-12814dd4-7425-43b5-9555-6aa4d3ec728d,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '15A' registration to: Yes (2026-06-10).,2026-06-10T09:15:49.830Z
+log-e36f796f-7a68-459d-8af4-6e5e27afdd3e,u-admin,TPHL Management,Admin,Sales Entry,Added sales entry for unit '15A' in project 'Residential (1550-  3200)' sold by Shafia Afrin Shahana.,2026-06-10T09:15:04.586Z
+log-a861aae7-35d4-4b5a-af2e-4cb6322fc502,u-admin,TPHL Management,Admin,Add Executive Bulk,Registered 48 Sales Executives via CSV importation.,2026-06-10T09:13:59.954Z
+log-246f16ba-d6a2-4852-987e-0139774b0840,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '1A' registration to: No (No Date).,2026-06-10T09:13:18.575Z
+log-a2db5048-de07-47de-9221-44e394fb4de6,u-admin,TPHL Management,Admin,Update Unit Registration,Updated Unit '1A' registration to: Yes (2026-06-10).,2026-06-10T09:13:13.445Z
+log-7724ca06-a227-4a0e-8f8b-a966ec55c2d2,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Amber leaf' (ID: pos-48442a48) and generated 56 units.,2026-06-10T09:12:51.503Z
+log-6d09cf40-7ac2-4275-a594-5c723614a171,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Southern Residance' (ID: pos-38daf95b) and generated 14 units.,2026-06-10T09:10:25.433Z
+log-740b75bc-c295-4d0f-b675-c27651e9a1db,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Studio Suite 4' (ID: pos-8beda282) and generated 63 units.,2026-06-10T09:09:26.350Z
+log-264ed9fc-4314-4298-9f8f-4cab4ff891a9,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The premium Luxaria Residance' (ID: pos-300bb7fe) and generated 14 units.,2026-06-10T09:08:30.072Z
+log-eb8e1688-6226-473d-b637-490e8576f800,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Fortune Residance' (ID: pos-7fd75989) and generated 14 units.,2026-06-10T09:08:18.913Z
+log-50f57d14-ce5f-40d8-a4ec-298839b51f58,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Glory Garden' (ID: pos-95ff632e) and generated 36 units.,2026-06-10T09:08:08.574Z
+log-19d22361-a7d6-440c-9d55-51ebdec28b07,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The South Point Villa' (ID: pos-2016e525) and generated 18 units.,2026-06-10T09:07:45.455Z
+log-f64c7348-0b0c-4486-a7c7-e5df696804c6,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Monarch Residance' (ID: pos-95686093) and generated 14 units.,2026-06-10T09:07:29.922Z
+log-0efa2381-e093-4365-a447-c5e1be7882e1,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium breeze Residance' (ID: pos-fd6ababe) and generated 14 units.,2026-06-10T09:07:15.283Z
+log-43aadacb-c1d1-43f1-9365-ba6c01d124f4,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Lakeview Terrace' (ID: pos-887cc2af) and generated 18 units.,2026-06-10T09:06:54.701Z
+log-a5ea7df2-0844-4edd-ae61-a674cb26b872,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Dream palace' (ID: pos-e6c33b47) and generated 18 units.,2026-06-10T09:06:39.711Z
+log-a35837e7-9e9c-49d6-8fd1-e0ddceec38ab,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Skypoint Villa' (ID: pos-f6486ce6) and generated 36 units.,2026-06-10T09:04:44.911Z
+log-a00596bf-3eab-42f2-b1a8-f09ee9a7765b,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Aurora View' (ID: pos-9096ff6c) and generated 18 units.,2026-06-10T09:04:09.354Z
+log-71b974b4-8535-4f7f-af28-063ba7f57dd3,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Azure Residance' (ID: pos-4858748d) and generated 14 units.,2026-06-10T09:03:50.953Z
+log-f9cf57ea-3b8f-4cfe-9b22-0e6c5667ac85,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Elite Garden' (ID: pos-d3768240) and generated 18 units.,2026-06-10T09:03:24.664Z
+log-f69a0dbe-1030-41f3-b06a-086b4d391eb9,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Studio Suite 7' (ID: pos-48f51f36) and generated 36 units.,2026-06-10T09:01:30.187Z
+log-f915dbde-adc7-4617-998c-78dec33cd437,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Crown pavillion' (ID: pos-f08e73c8) and generated 112 units.,2026-06-10T08:57:03.251Z
+log-74f64f15-ad38-4246-956c-3a621fb33ed3,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'Legacy Residential' (ID: pos-84fd42cb) and generated 56 units.,2026-06-10T08:56:16.862Z
+log-a71359d7-825b-425d-9332-975e20fd8b77,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Maple Heights' (ID: pos-23307c8e) and generated 56 units.,2026-06-10T08:55:52.249Z
+log-0042b64b-fb74-4cf3-9bfd-ff7d6dd9f0e8,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Twelve Heights' (ID: pos-e122ec1a) and generated 36 units.,2026-06-10T08:55:10.932Z
+log-fdf5d0e3-4b81-4348-9129-4c2cb56194cd,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'TP Signature Heights' (ID: pos-1d922cc3) and generated 36 units.,2026-06-10T08:54:39.628Z
+log-356cb4c2-b80f-43f2-8076-fcaf79b2fe98,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The premium Armonia' (ID: pos-4ea8124a) and generated 9 units.,2026-06-10T08:53:46.827Z
+log-e3e2ee78-fa4a-4745-8e6d-38cb24d3123c,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Prestige Heights' (ID: pos-1fe73361) and generated 9 units.,2026-06-10T08:52:55.367Z
+log-fbcf5531-d795-4709-b3da-ae3a950f3814,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Preimum Horizon' (ID: pos-3aa451e7) and generated 16 units.,2026-06-10T08:52:20.413Z
+log-3a1f7ebb-7e3d-4a72-8ac7-e394cdf8038d,u-admin,TPHL Management,Admin,Add Project On Sale,Added pre-sale project 'The Premium Canvas of Happiness' (ID: pos-27c72165) and generated 68 units.,2026-06-10T08:51:37.372Z
+log-624bd2c3-a591-420c-8da5-4b70ea34bf06,u-admin,TPHL Management,Admin,Add Teams Bulk,Imported 11 Sales Teams/Divisions via CSV.,2026-06-10T08:14:29.649Z
+log-f96e7923-fcbc-4861-949d-c25025de1899,u-admin,TPHL Management,Admin,Update Incentive Setup,Modified sequence percentage levels and floor bonuses for project ID 'proj-521a9794'.,2026-06-10T08:12:36.199Z
+log-51573370-74aa-46dc-a031-79784e6f3350,u-admin,TPHL Management,Admin,Update Incentive Setup,Modified sequence percentage levels and floor bonuses for project ID 'proj-a1595ec5'.,2026-06-10T08:12:24.987Z
+log-8e60f8d0-5aec-450e-9aeb-0652f6cc2476,u-admin,TPHL Management,Admin,Update Incentive Setup,Modified sequence percentage levels and floor bonuses for project ID 'proj-44daace5'.,2026-06-10T08:12:13.475Z
+log-34585a38-155e-4d9e-add4-2d227b5dd560,u-admin,TPHL Management,Admin,Bulk Import Rules,"Imported rules via CSV. 13 project rules updated, global target bonuses updated.",2026-06-10T08:11:52.240Z
+log-14392465-ff5a-41ab-9e44-122332358c47,u-admin,TPHL Management,Admin,Add Project,Added project 'Residential (1550-  3200)' (ID: proj-cae999a1) and created baseline incentive rules.,2026-06-10T08:11:10.893Z
+log-1aec6c6b-6b98-4341-8d49-3fb17e44d6b8,u-admin,TPHL Management,Admin,Add Project,Added project 'Commercial (29K-30K)' (ID: proj-5730b82f) and created baseline incentive rules.,2026-06-10T08:10:29.744Z
+log-54d39aaa-c4d3-43ac-9c70-2879533e6084,u-admin,TPHL Management,Admin,Add Project,Added project 'Commercial (25K-28K)' (ID: proj-9b852680) and created baseline incentive rules.,2026-06-10T08:09:27.803Z
+log-8e60f8d0-5aec-450e-9aeb-0652f6cc2476,u-admin,TPHL Management,Admin,Add Project,Added project 'Commercial (20K-24K)' (ID: proj-f9cfee23) and created baseline incentive rules.,2026-06-10T08:06:55.116Z
+log-c479c804-af73-4fcc-b612-ff4577b07952,u-admin,TPHL Management,Admin,Add Project,Added project 'Residential  (1500 - 2500)' (ID: proj-86ae744b) and created baseline incentive rules.,2026-06-10T07:59:58.432Z
+log-0f9848da-f4c4-4e9b-ae8e-ec1e6ddb8f12,u-admin,TPHL Management,Admin,Add Project,Added project 'Residential  (1500 - 2500)' (ID: proj-bfe8b304) and created baseline incentive rules.,2026-06-10T07:59:56.944Z
+log-becbe272-89c5-4e01-af06-7e23bb0eafbd,u-admin,TPHL Management,Admin,Edit Project,Updated project details for 'Residential Studio  (500 - 900) '.,2026-06-10T07:59:09.769Z
+log-26aea703-d8d8-45f0-b6ef-85523a994fcd,u-admin,TPHL Management,Admin,Add Project,Added project 'Residential  (1000 - 1400)' (ID: proj-ce4b7f8c) and created baseline incentive rules.,2026-06-10T07:58:44.493Z
+log-1e9e5d72-019e-4215-896b-1b42947be132,u-admin,TPHL Management,Admin,Add Project,Added project 'Residential Studio  (500 - 900) ' (ID: proj-09effd75) and created baseline incentive rules.,2026-06-10T07:57:37.122Z
+log-6afd5193-919e-4553-948f-bdbe33163a33,u-admin,TPHL Management,Admin,Add Project,Added project 'Smart City (Commercial)' (ID: proj-dc321edd) and created baseline incentive rules.,2026-06-10T07:56:36.385Z
+log-2bb5018c-e65d-4ca7-b8ae-d692359f962a,u-admin,TPHL Management,Admin,Add Project,Added project 'Smart City (1900 - 5000)' (ID: proj-09c364f0) and created baseline incentive rules.,2026-06-10T07:55:36.393Z
+log-279a3889-d7e6-4cd7-8889-2297ebc9876c,u-admin,TPHL Management,Admin,Add Project,Added project 'Smart City (1200 - 1800)' (ID: proj-521a9794) and created baseline incentive rules.,2026-06-10T06:11:04.205Z
+log-2c05ff55-6ba3-4697-a8cb-c602606ef53f,u-admin,TPHL Management,Admin,Edit Project,Updated project details for 'Smart City (Studio) (610 - 1199) '.,2026-06-10T06:10:17.575Z
+log-2b8e7a31-d0db-4505-a9ee-f2af6285fefa,u-admin,TPHL Management,Admin,Add Project,Added project 'Smart City (Studio) (610 - 1199) ' (ID: proj-a1595ec5) and created baseline incentive rules.,2026-06-10T06:09:52.183Z
+log-0edfaaa1-efde-4adf-bd2f-eed63d199eeb,u-admin,TPHL Management,Admin,Add Project,Added project 'Regular Project (1100 - 1600+)' (ID: proj-44daace5) and created baseline incentive rules.,2026-06-10T06:08:53.425Z
+log-01da0d73-dc8f-43ab-9c70-a23b59482b25,u-admin,TPHL Management,Admin,Add Project,Added project 'Studio & Residence (345 - 1000) ' (ID: proj-3dda5c46) and created baseline incentive rules.,2026-06-10T06:07:47.047Z
+log-d4d08a01-0dd4-4b6a-afc9-bff035445006,u-admin,TPHL Management,Admin,Bulk Import Rules,"Imported rules via CSV. 0 project rules updated, global target bonuses updated.",2026-06-10T05:58:35.089Z
+log-23d59d37-d823-45a6-b23b-1f5de6cca778,u-admin,TPHL Management,Admin,Bulk Import Rules,"Imported rules via CSV. 0 project rules updated, global target bonuses updated.",2026-06-10T05:54:57.831Z
+log-1,u-admin,TPHL Management,Admin,System Initialization,Clean database initialized for real sales operations.,2026-06-04T07:00:00Z

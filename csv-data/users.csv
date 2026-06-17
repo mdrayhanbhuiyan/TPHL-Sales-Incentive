@@ -1,0 +1,52 @@
+id,email,name,role,employee_id,team_id,created_at
+u-admin,admin@tphl.com,TPHL Management,Admin,,,2026-01-01T00:00:00Z
+u-leader1,leader@tphl.com,Sajjad Hossain,Sales Team Leader,,,2026-01-05T00:00:00Z
+u-exec1,executive@tphl.com,Rahim Ahmed,Sales Executive,EMP01,,2026-01-10T00:00:00Z
+exec-f0e32944,1197@tphl.com,Shafia Afrin Shahana,Sales Executive,1197,team-a92574ed,2026-06-10T09:13:59.953Z
+exec-d4726055,1145@tphl.com,Md. Amanullah Aman,Sales Executive,1145,team-770d757a,2026-06-10T09:13:59.953Z
+exec-1bf83a57,1219@tphl.com,MD.Touhidul Islam,Sales Executive,1219,team-6baaa1dd,2026-06-10T09:13:59.953Z
+exec-4f065775,1182@tphl.com,Al Mubin Shuvo,Sales Executive,1182,team-a92574ed,2026-06-10T09:13:59.953Z
+exec-69e18593,1140@tphl.com,Md Tanvir Hossain jian,Sales Executive,1140,team-02749e57,2026-06-10T09:13:59.953Z
+exec-fa187350,1028@tphl.com,Md Rabbi Hossain,Sales Executive,1028,,2026-06-10T09:13:59.953Z
+exec-a857e8ae,1067@tphl.com,Md. Saiful Islam Jony,Sales Executive,1067,team-dfdae532,2026-06-10T09:13:59.953Z
+exec-422dfa44,1222@tphl.com,Mst. Sania Khatun,Sales Executive,1222,team-e1aa27d0,2026-06-10T09:13:59.953Z
+exec-5914d56a,1048@tphl.com,MD Feroz Ahamed,Sales Executive,1048,team-e1aa27d0,2026-06-10T09:13:59.953Z
+exec-ea72582f,1238@tphl.com,Md.Nazmus Sakib,Sales Executive,1238,team-e1aa27d0,2026-06-10T09:13:59.953Z
+exec-8cff212f,1135@tphl.com,Rakib Hasan Rubai,Sales Executive,1135,team-770d757a,2026-06-10T09:13:59.953Z
+exec-6945d1e9,1156@tphl.com,Md Asim Akram,Sales Executive,1156,team-49e9b60a,2026-06-10T09:13:59.953Z
+exec-2d5491b3,1132@tphl.com,Rafiqul Islam,Sales Executive,1132,team-770d757a,2026-06-10T09:13:59.953Z
+exec-15672190,1160@tphl.com,Sayed al Shahab,Sales Executive,1160,team-49e9b60a,2026-06-10T09:13:59.954Z
+exec-886fa923,1082@tphl.com,Tansur Aman Satu,Sales Executive,1082,team-dd7b3e1e,2026-06-10T09:13:59.954Z
+exec-59909ed0,1150@tphl.com,Md Abul Hasan Hasib,Sales Executive,1150,team-49e9b60a,2026-06-10T09:13:59.954Z
+exec-b8d5fb04,1058@tphl.com,Munshi Aiman Kabir,Sales Executive,1058,,2026-06-10T09:13:59.954Z
+exec-077aaa3e,356597@tphl.com,Mohinur Islam Munna,Sales Executive,356597,team-dd7b3e1e,2026-06-10T09:13:59.954Z
+exec-e62458a0,1228@tphl.com,Nazmul Islam Robin,Sales Executive,1228,team-a92574ed,2026-06-10T09:13:59.954Z
+exec-84e6a821,1186@tphl.com,Nayeemur Rahman,Sales Executive,1186,,2026-06-10T09:13:59.954Z
+exec-131ea08f,1167@tphl.com,H M Nazmul Alam,Sales Executive,1167,team-02749e57,2026-06-10T09:13:59.954Z
+exec-38dfddb7,1161@tphl.com,MD. Rayhan kabir Roni,Sales Executive,1161,,2026-06-10T09:13:59.954Z
+exec-1ce58d74,1054@tphl.com,S.A. Arnob,Sales Executive,1054,,2026-06-10T09:13:59.954Z
+exec-3bf9a4cd,1169@tphl.com,Md Tarekul Islam,Sales Executive,1169,team-dfdae532,2026-06-10T09:13:59.954Z
+exec-a48d3be2,1227@tphl.com,Md Tamjid Chowdhury,Sales Executive,1227,team-a92574ed,2026-06-10T09:13:59.954Z
+exec-df058ea2,1062@tphl.com,Mehedi Hasan Shuvo,Sales Executive,1062,,2026-06-10T09:13:59.954Z
+exec-51baeddc,1127@tphl.com,Kazi Jahid Hasan,Sales Executive,1127,team-dfdae532,2026-06-10T09:13:59.954Z
+exec-86fcb65d,1075@tphl.com,Md. Ajizul Islam Manik,Sales Executive,1075,,2026-06-10T09:13:59.954Z
+exec-1f4e545e,1051@tphl.com,Rakib Al Hasan,Sales Executive,1051,team-dd7b3e1e,2026-06-10T09:13:59.954Z
+exec-71a2d94b,356426@tphl.com,Irfan kabir abir,Sales Executive,356426,,2026-06-10T09:13:59.954Z
+exec-d53c9bee,1194@tphl.com,Aranya Bhowmick Dhrubo,Sales Executive,1194,team-6baaa1dd,2026-06-10T09:13:59.954Z
+exec-bbc83907,1221@tphl.com,Raduan Ahmed Tanim,Sales Executive,1221,,2026-06-10T09:13:59.954Z
+exec-dd92d702,1146@tphl.com,Abu Naym,Sales Executive,1146,team-dfdae532,2026-06-10T09:13:59.954Z
+exec-b4ee45ac,1035@tphl.com,Md. Ibrahim Khalil,Sales Executive,1035,team-e1aa27d0,2026-06-10T09:13:59.954Z
+exec-b53ff7c8,299449@tphl.com,Tabassum Akter Soma,Sales Executive,299449,team-e1aa27d0,2026-06-10T09:13:59.954Z
+exec-ceef48a2,1061@tphl.com,Sadman Islam Sakib,Sales Executive,1061,team-6baaa1dd,2026-06-10T09:13:59.954Z
+exec-e9196bff,1040@tphl.com,Shammi Akhter,Sales Executive,1040,team-02749e57,2026-06-10T09:13:59.954Z
+exec-3fca2a0f,1100@tphl.com,Md Momidul Islam,Sales Executive,1100,team-49e9b60a,2026-06-10T09:13:59.954Z
+exec-0a751ee4,1023@tphl.com,Saleh Ahamed,Sales Executive,1023,,2026-06-10T09:13:59.954Z
+exec-adc77e72,1195@tphl.com,Shanawaz Khan,Sales Executive,1195,,2026-06-10T09:13:59.954Z
+exec-40b68d18,1041@tphl.com,Rejwan Ahmad,Sales Executive,1041,team-6baaa1dd,2026-06-10T09:13:59.954Z
+exec-219b1b75,1131@tphl.com,Mst Tamanna Akter Meghna,Sales Executive,1131,team-dd7b3e1e,2026-06-10T09:13:59.954Z
+exec-73948589,1237@tphl.com,Shah Sakander Shohag,Sales Executive,1237,,2026-06-10T09:13:59.954Z
+exec-35ed2aa6,1153@tphl.com,Ali Haider Abdullah,Sales Executive,1153,,2026-06-10T09:13:59.954Z
+exec-d562583a,1063@tphl.com,Tabassum Akter Soma,Sales Executive,1063,team-e1aa27d0,2026-06-10T09:13:59.954Z
+exec-6e2b5059,1235@tphl.com,Nehemiah Biswas Prottoy,Sales Executive,1235,team-e1aa27d0,2026-06-10T09:13:59.954Z
+exec-f5e71956,1184@tphl.com,France Roy,Sales Executive,1184,,2026-06-10T09:13:59.954Z
+exec-d31a11ff,1024@tphl.com,Md. Kowsar Ahammed,Sales Executive,1024,,2026-06-10T09:13:59.954Z

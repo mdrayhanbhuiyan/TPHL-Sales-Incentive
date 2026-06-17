@@ -1,0 +1,20 @@
+id,title,message,type,timestamp,read
+notif-df3de9ab-5a73-4f05-97d4-5dc656014b11,Database Standard Restore Successful,The database state files have been replaced and recalculated from backup.,success,2026-06-17T08:04:54.422Z,false
+notif-636a09a7-2915-4dd8-aaef-bab5be7e2293,New Sale & Incentive Calculated,Sales record created for 1B (Residential (1550-  3200)). Generated incentive: 0 BDT.,success,2026-06-16T09:54:04.893Z,false
+notif-f992b6b3-83ae-473a-9df2-185d6ebb71a6,New Sale & Incentive Calculated,Sales record created for 17A (Residential (1550-  3200)). Generated incentive: 0 BDT.,success,2026-06-10T09:18:13.126Z,false
+notif-9efb5c35-c437-40f4-9d3f-e77110c26f20,New Sale & Incentive Calculated,Sales record created for 15A (Residential (1550-  3200)). Generated incentive: 0 BDT.,success,2026-06-10T09:15:04.586Z,false
+notif-9a648089-13f8-47d8-a133-d3e5ac915b74,New Project Created,"Project ""Residential (1550-  3200)"" has been registered in Bashundhara.",success,2026-06-10T08:11:10.893Z,false
+notif-de11b227-4d0b-464f-8d80-f7cb48f997b4,New Project Created,"Project ""Commercial (29K-30K)"" has been registered in ATI Society.",success,2026-06-10T08:10:29.745Z,false
+notif-cea20ff6-0c9d-4047-980e-45ae072e37bc,New Project Created,"Project ""Commercial (25K-28K)"" has been registered in ATI Soceity.",success,2026-06-10T08:09:27.803Z,false
+notif-889ebe97-53a2-4aff-93bb-881cbef0376c,New Project Created,"Project ""Commercial (20K-24K)"" has been registered in ATI Soceity.",success,2026-06-10T08:06:55.116Z,false
+notif-c4c162be-3996-4326-977e-ae711059678c,New Project Created,"Project ""Residential  (1500 - 2500)"" has been registered in ATI Soceity.",success,2026-06-10T07:59:58.432Z,false
+notif-4edd2907-a000-4be2-b7aa-cac2fe990184,New Project Created,"Project ""Residential  (1500 - 2500)"" has been registered in ATI Soceity.",success,2026-06-10T07:59:56.944Z,false
+notif-5aecf3cd-0e03-497f-992e-22e9cda20243,New Project Created,"Project ""Residential  (1000 - 1400)"" has been registered in ATI Soceity .",success,2026-06-10T07:58:44.493Z,false
+notif-b4bd814e-5a21-4323-b60b-ba0714ef4ef3,New Project Created,"Project ""Residential Studio  (500 - 900) "" has been registered in 500-900.",success,2026-06-10T07:57:37.122Z,false
+notif-1efb7dfa-4366-4267-9dd8-762ff7b49804,New Project Created,"Project ""Smart City (Commercial)"" has been registered in Ashulia, Dhaka.",success,2026-06-10T07:56:36.386Z,false
+notif-79813ba4-c711-40fd-a118-b08018bb604f,New Project Created,"Project ""Smart City (1900 - 5000)"" has been registered in Ashulia, Dhaka.",success,2026-06-10T07:55:36.393Z,false
+notif-a32b0872-76e9-44a5-90c9-ddc87e247b02,New Project Created,"Project ""Smart City (1200 - 1800)"" has been registered in Ashulia, Dhaka.",success,2026-06-10T06:11:04.205Z,false
+notif-192a65fc-b566-45bf-9aab-f07233ae929e,New Project Created,"Project ""Smart City (Studio) (610 - 1199) "" has been registered in Ashulia, Dhaka.",success,2026-06-10T06:09:52.183Z,false
+notif-4f3fe33b-922e-4e79-8770-7976e6050a74,New Project Created,"Project ""Regular Project (1100 - 1600+)"" has been registered in Ashulia, Dhaka.",success,2026-06-10T06:08:53.425Z,false
+notif-7d24aa5c-4572-4a31-bacc-56f255486e74,New Project Created,"Project ""Studio & Residence (345 - 1000) "" has been registered in Ashulia, Dhaka.",success,2026-06-10T06:07:47.047Z,false
+notif-1,Production System Ready,"Database initialized. Create projects, define teams, assign executives, and register sales to get started.",success,2026-06-04T07:01:00Z,false
