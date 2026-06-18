@@ -293,7 +293,7 @@ export default function ExecutiveIncentiveChart({ authToken, userRole, userProfi
               {monthlyChartData.map((month) => {
                 const heightPercentage = month.totalIncentive > 0 
                   ? `${Math.max((month.totalIncentive / maxIncentiveVal) * 85, 3)}%` 
-                  : '3px';
+                  : '3%';
                 const isHovered = hoveredMonth === month.monthKey;
 
                 return (
@@ -305,14 +305,13 @@ export default function ExecutiveIncentiveChart({ authToken, userRole, userProfi
                   >
                     <div className="w-full flex items-end justify-center h-5/6 relative">
                       {/* Stacked Animated Bar */}
-                      <motion.div 
+                      <div 
                         style={{ height: heightPercentage }} 
                         className={`w-full max-w-[40px] rounded-t-lg transition-all duration-300 relative flex flex-col justify-end overflow-hidden border border-emerald-500/10 ${
                           isHovered 
                             ? 'bg-emerald-600 shadow-md ring-2 ring-emerald-300 dark:ring-emerald-800/30 scale-x-105'
                             : 'bg-gradient-to-t from-emerald-500 to-teal-400 group-hover:from-emerald-500 group-hover:to-teal-500'
                         }`}
-                        layout
                       >
                         {/* Overlay split colors visually of different bonuses */}
                         {month.totalIncentive > 0 && (
@@ -345,7 +344,7 @@ export default function ExecutiveIncentiveChart({ authToken, userRole, userProfi
                             )}
                           </div>
                         )}
-                      </motion.div>
+                      </div>
 
                       {/* Tooltip on individual hover */}
                       <AnimatePresence>

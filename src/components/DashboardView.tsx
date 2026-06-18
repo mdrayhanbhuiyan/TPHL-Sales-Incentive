@@ -83,7 +83,9 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
   }, [authToken, refreshTrigger]);
 
   const loadDashboardData = () => {
-    setLoading(true);
+    if (!data) {
+      setLoading(true);
+    }
     setFetchError(null);
 
     fetch('/api/dashboard/analytics', {

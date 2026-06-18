@@ -15,6 +15,7 @@ import {
   recalculateAllIncentivesDirect,
   initFirestore,
   syncWithFirestoreIfNeeded,
+  getPendingWrites,
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
   getCSVDiagnostics,
@@ -67,6 +68,45 @@ export async function startServer() {
         await syncWithFirestoreIfNeeded();
       } catch (err: any) {
         console.error("[server.ts] Error synchronising state from Firebase Firestore:", err.message || err);
+      }
+
+      // Intercept and wrap response finalizers on mutating/non-GET requests to await pending Firestore writes before responding
+      if (req.method !== 'GET') {
+        const originalJson = res.json;
+        const originalSend = res.send;
+        const originalEnd = res.end;
+
+        let awaitingWrites = false;
+
+        const finishAndSend = async (fn: () => void) => {
+          if (awaitingWrites) {
+            fn();
+            return;
+          }
+          awaitingWrites = true;
+          try {
+            // Await any background Firestore writes to finish so the serverless run is not frozen too early
+            await getPendingWrites();
+          } catch (err: any) {
+            console.error("[server.ts] Error awaiting pending database writes:", err.message || err);
+          }
+          fn();
+        };
+
+        res.json = function (body) {
+          finishAndSend(() => originalJson.call(res, body));
+          return res;
+        };
+
+        res.send = function (body) {
+          finishAndSend(() => originalSend.call(res, body));
+          return res;
+        };
+
+        res.end = function (...args: any[]) {
+          finishAndSend(() => originalEnd.apply(res, args));
+          return res;
+        };
       }
     }
     next();

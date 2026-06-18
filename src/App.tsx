@@ -5,13 +5,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
+import { initializeFirestore, collection, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 let firestoreDb: any = null;
 try {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  firestoreDb = initializeFirestore(app, {
+    experimentalForceLongPolling: true
+  }, firebaseConfig.firestoreDatabaseId);
 } catch (e) {
   console.warn("[App.tsx] Client firebase connection not initialized:", e);
 }

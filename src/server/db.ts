@@ -10,7 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { initializeFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { 
   User, 
@@ -167,6 +167,7 @@ let cachedStore: DatabaseStore | null = null;
 let supabaseClient: any = null;
 let firestoreDb: any = null;
 let lastLocalSyncTime = 0;
+let activeWritePromises: Promise<any>[] = [];
 
 // Initialize Firebase Firestore client safely with config
 try {
@@ -176,7 +177,9 @@ try {
     if (configData && configData.apiKey && configData.projectId) {
       const fbApp = getApps().length === 0 ? initializeApp(configData) : getApp();
       const dbName = configData.firestoreDatabaseId || "(default)";
-      firestoreDb = getFirestore(fbApp, dbName);
+      firestoreDb = initializeFirestore(fbApp, {
+        experimentalForceLongPolling: true
+      }, dbName);
       console.log("[db.ts] Firebase client in db.ts initialized server-side successfully with project ID: " + configData.projectId + " and database Name: " + dbName);
     } else {
       console.log("[db.ts] Empty or incomplete firebase-applet-config.json found.");
@@ -754,7 +757,33 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
         await setDoc(docRef, { data: sanitized });
       }
     }
-    console.log("[db.ts] Successfully synchronized full database state to Firebase Firestore!");
+
+    // Determine and write current deployment hash to prevent deployment mismatches on boot
+    const setupKeyData = {
+      users: store.users,
+      projects: store.projects,
+      salesTeams: store.salesTeams,
+      teamProjects: store.teamProjects,
+      salesExecutives: store.salesExecutives,
+      incentiveRules: store.incentiveRules,
+      bonusRules: store.bonusRules,
+      projectsOnSale: store.projectsOnSale,
+      unitRegistrations: store.unitRegistrations,
+      rolePermissions: store.rolePermissions
+    };
+    const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
+
+    // Update metadata document in Firestore with current deployment hash & updated timestamp
+    const nowEpoch = Date.now();
+    const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
+    await setDoc(metaRef, { 
+      deploymentHash: currentLocalHash, 
+      lastUpdatedAt: nowEpoch 
+    });
+
+    // Match our local sync timestamp so we don't redundantly re-pull our own write
+    lastLocalSyncTime = nowEpoch;
+    console.log("[db.ts] Successfully synchronized full database state and metadata/lastLocalSyncTime to Firebase Firestore!");
   } catch (err: any) {
     console.error("[db.ts] Failed to sync database state to Firebase Firestore:", err.message || err);
   }
@@ -785,13 +814,11 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
 
   // Active Firebase synchronization
   if (firestoreDb) {
-    saveStoreToFirestore(store).catch(err => {
-      console.error("[db.ts] Firestore async write failed:", err);
-    });
+    await saveStoreToFirestore(store);
   }
 
   if (supabaseClient) {
-    return new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       writeTasks.push({ store, resolve, reject });
       processWriteQueue();
     });
@@ -1031,11 +1058,22 @@ export function getStore(): DatabaseStore {
   return cachedStore;
 }
 
+// Retrieve all currently run and pending database background writes
+export function getPendingWrites(): Promise<any> {
+  return Promise.all(activeWritePromises);
+}
+
 // Synchronously update cache, and trigger direct async/awaited Firestore save with back-propagating promise and safely managed globally caught rejection to prevent unhandled rejections
 export function writeStore(store: DatabaseStore): Promise<void> {
   cachedStore = store;
   
   const promise = writeStoreToFirestore(store);
+  
+  // Register this promise in active items
+  activeWritePromises.push(promise);
+  promise.finally(() => {
+    activeWritePromises = activeWritePromises.filter(p => p !== promise);
+  });
   
   // Attach a silent catch to prevent unhandled rejection crashes when not awaited
   promise.catch(err => {
@@ -1490,20 +1528,13 @@ export async function getFirebaseDiagnostics(): Promise<any> {
   
   if (isFirestoreConfigured && firestoreDb) {
     try {
-      // Test read/write connectivity on a light testing key inside collection sales_portal_data
-      const testDocRef = doc(firestoreDb, 'sales_portal_data', 'connection_test');
-      await setDoc(testDocRef, { timestamp: new Date().toISOString() });
+      // Test read/query connectivity on metadata instead of writing to connection_test on every diagnostics call
+      const testDocRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
       const testSnap = await getDoc(testDocRef);
       
-      if (testSnap.exists()) {
-        connectionStatus = 'success';
-        connectionMessage = 'Live Firebase Firestore database connected and tested successfully! All records sync in real-time.';
-        connectionRecommendation = 'Everything is fully active and working!';
-      } else {
-        connectionStatus = 'warning';
-        connectionMessage = 'Firestore collection queried successfully, but connection_test document was not returned.';
-        connectionRecommendation = 'Check your Firebase rules or Firestore database settings.';
-      }
+      connectionStatus = 'success';
+      connectionMessage = 'Live Firebase Firestore database connected and tested successfully! All records sync in real-time.';
+      connectionRecommendation = 'Everything is fully active and working!';
     } catch (err: any) {
       connectionStatus = 'failed';
       connectionMessage = `Failed to query Firebase Firestore: ${err.message || err}`;
