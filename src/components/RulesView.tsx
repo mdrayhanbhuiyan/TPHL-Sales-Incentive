@@ -26,9 +26,10 @@ import { useToast } from './Toast';
 interface RulesViewProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function RulesView({ authToken, userRole }: RulesViewProps) {
+export default function RulesView({ authToken, userRole, refreshTrigger }: RulesViewProps) {
   const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjId, setSelectedProjId] = useState('');
@@ -405,7 +406,7 @@ export default function RulesView({ authToken, userRole }: RulesViewProps) {
 
   useEffect(() => {
     fetchRulesAndProjects();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;

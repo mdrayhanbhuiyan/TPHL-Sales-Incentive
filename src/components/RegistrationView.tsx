@@ -26,9 +26,10 @@ import { useToast } from './Toast';
 interface RegistrationViewProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function RegistrationView({ authToken, userRole }: RegistrationViewProps) {
+export default function RegistrationView({ authToken, userRole, refreshTrigger }: RegistrationViewProps) {
   const { toast } = useToast();
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
@@ -314,7 +315,7 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
 
   useEffect(() => {
     fetchInitialData();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   // Handle setting/toggle registration
   const handleToggleRegistration = async (record: UnitRegistration, forceState?: 'Yes' | 'No', customDate?: string) => {

@@ -4,6 +4,17 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
+
+let firestoreDb: any = null;
+try {
+  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  firestoreDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+} catch (e) {
+  console.warn("[App.tsx] Client firebase connection not initialized:", e);
+}
 import { 
   Building2, 
   TrendingUp, 
@@ -69,6 +80,65 @@ export default function App() {
   const [activeRoute, setActiveRoute] = useState<AppRoute>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [notificationsCount, setNotificationsCount] = useState(0);
+
+  // Real-time synchronization states
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'Live Connected' | 'Fallback'>('Fallback');
+
+  // Firestore real-time listener subscription
+  useEffect(() => {
+    if (!firestoreDb) {
+      setSyncStatus('Fallback');
+      return;
+    }
+
+    try {
+      setSyncStatus('Live Connected');
+      let isInitialSetup = true;
+
+      const unsub = onSnapshot(collection(firestoreDb, 'sales_portal_data'), (snapshot) => {
+        if (!isInitialSetup) {
+          console.log("[App.tsx] Real-time Firestore update triggered, updating refreshTrigger!");
+          setIsSyncing(true);
+          setRefreshTrigger(prev => prev + 1);
+          setTimeout(() => {
+            setIsSyncing(false);
+          }, 1000);
+        } else {
+          isInitialSetup = false;
+        }
+      }, (error) => {
+        console.error("Firestore onSnapshot subscription failed:", error);
+        setSyncStatus('Fallback');
+      });
+
+      return () => unsub();
+    } catch (err) {
+      console.error("Failed to register isSnapshot event listener:", err);
+      setSyncStatus('Fallback');
+    }
+  }, []);
+
+  // Fallback Polling when client-side direct listener is inactive or offline
+  useEffect(() => {
+    if (syncStatus !== 'Fallback') return;
+
+    const interval = setInterval(() => {
+      // Periodic ping check to refresh UI states safely
+      fetch('/api/system/firebase-diagnostics', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        // Increment trigger to sync frontend with any backend state changes
+        setRefreshTrigger(prev => prev + 1);
+      })
+      .catch((e) => console.warn("[App.tsx] Fallback sync poll failed:", e));
+    }, 12000); // Poll every 12 seconds in fallback mode
+
+    return () => clearInterval(interval);
+  }, [syncStatus, authToken]);
 
   // Sync dark class list
   useEffect(() => {
@@ -255,29 +325,29 @@ export default function App() {
   const renderActiveView = () => {
     switch (activeRoute) {
       case 'dashboard':
-        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} />;
+        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} refreshTrigger={refreshTrigger} />;
       case 'projects-on-sale':
-        return <ProjectsOnSaleView authToken={authToken} userRole={userProfile.role} />;
+        return <ProjectsOnSaleView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'registration':
-        return <RegistrationView authToken={authToken} userRole={userProfile.role} />;
+        return <RegistrationView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'projects':
-        return <ProjectView authToken={authToken} userRole={userProfile.role} />;
+        return <ProjectView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'teams':
-        return <TeamsView authToken={authToken} userRole={userProfile.role} />;
+        return <TeamsView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'executives':
-        return <ExecutivesView authToken={authToken} userRole={userProfile.role} />;
+        return <ExecutivesView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'rules':
-        return <RulesView authToken={authToken} userRole={userProfile.role} />;
+        return <RulesView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'sales':
-        return <SalesEntryView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} />;
+        return <SalesEntryView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} refreshTrigger={refreshTrigger} />;
       case 'incentives':
-        return <IncentivesView authToken={authToken} userRole={userProfile.role} />;
+        return <IncentivesView authToken={authToken} userRole={userProfile.role} refreshTrigger={refreshTrigger} />;
       case 'docs':
         return <DocsView />;
       case 'settings':
         return <SettingsView authToken={authToken} userRole={userProfile.role} />;
       default:
-        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} />;
+        return <DashboardView authToken={authToken} userRole={userProfile.role} userProfile={userProfile} refreshTrigger={refreshTrigger} />;
     }
   };
 
@@ -423,6 +493,18 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Real-time synchronization state badge */}
+            <div className={`flex items-center gap-1.5 border text-[10px] font-mono px-2.5 py-1 rounded-full select-none transition-all duration-300 ${
+              syncStatus === 'Live Connected'
+                ? (isDarkMode ? 'bg-indigo-950/40 border-indigo-900/40 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-700')
+                : (isDarkMode ? 'bg-amber-950/40 border-amber-900/40 text-amber-500' : 'bg-amber-50 border-amber-100 text-amber-700')
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                syncStatus === 'Live Connected' ? 'bg-indigo-500' : 'bg-amber-500'
+              } ${isSyncing ? 'animate-ping' : ''}`} />
+              <span className="font-bold">{syncStatus === 'Live Connected' ? '📡 LIVE SYNC' : '💾 STANDBY'}</span>
+            </div>
+
             {/* Quick system check badge */}
             <div className={`flex items-center gap-1.5 border text-[10px] font-mono px-2.5 py-1 rounded-full ${isDarkMode ? 'bg-emerald-950/30 border-emerald-900/50 text-emerald-400' : 'bg-emerald-50 border-emerald-100/65 text-emerald-800'}`}>
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
@@ -459,7 +541,14 @@ export default function App() {
         </header>
 
         {/* DYNAMIC SCROLL CONTAINER PANEL */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto relative">
+          {/* Global loader during synchronous backend update broadcasts */}
+          {isSyncing && (
+            <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-indigo-600 dark:bg-indigo-500 text-white px-4 py-2 rounded-xl shadow-lg text-[11px] font-mono font-bold animate-bounce border border-indigo-400/30">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Broadcasting data update...</span>
+            </div>
+          )}
           {renderActiveView()}
         </main>
       </div>

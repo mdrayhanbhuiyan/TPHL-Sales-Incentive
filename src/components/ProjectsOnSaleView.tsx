@@ -35,9 +35,10 @@ import { useToast } from './Toast';
 interface ProjectsOnSaleViewProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSaleViewProps) {
+export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger }: ProjectsOnSaleViewProps) {
   const { toast } = useToast();
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
@@ -140,7 +141,7 @@ export default function ProjectsOnSaleView({ authToken, userRole }: ProjectsOnSa
 
   useEffect(() => {
     fetchData();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const handleExportCSV = () => {
     const headers = [

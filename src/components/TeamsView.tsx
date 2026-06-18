@@ -26,9 +26,10 @@ import { useToast } from './Toast';
 interface TeamsViewProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
+export default function TeamsView({ authToken, userRole, refreshTrigger }: TeamsViewProps) {
   const { toast } = useToast();
   const [teams, setTeams] = useState<any[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
@@ -82,7 +83,7 @@ export default function TeamsView({ authToken, userRole }: TeamsViewProps) {
 
   useEffect(() => {
     fetchTeamsAndProjects();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const handleExportCSV = () => {
     const headers = [

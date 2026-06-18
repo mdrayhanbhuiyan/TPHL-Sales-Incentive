@@ -28,9 +28,10 @@ import { useToast } from './Toast';
 interface IncentivesProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function IncentivesView({ authToken, userRole }: IncentivesProps) {
+export default function IncentivesView({ authToken, userRole, refreshTrigger }: IncentivesProps) {
   const { toast } = useToast();
 
   const [incentives, setIncentives] = useState<any[]>([]);
@@ -278,7 +279,7 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
 
   useEffect(() => {
     fetchIncentivesAndTeams();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   // List unique values for filters
   const uniqueProjects = Array.from(new Set(incentives.map(inc => inc.project_name))).sort();

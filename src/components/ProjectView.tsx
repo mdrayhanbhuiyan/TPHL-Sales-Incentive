@@ -29,9 +29,10 @@ import { useToast } from './Toast';
 interface ProjectViewProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
+export default function ProjectView({ authToken, userRole, refreshTrigger }: ProjectViewProps) {
   const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,7 +277,7 @@ export default function ProjectView({ authToken, userRole }: ProjectViewProps) {
 
   useEffect(() => {
     fetchProjects();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

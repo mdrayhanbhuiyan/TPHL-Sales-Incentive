@@ -29,9 +29,10 @@ interface SalesEntryProps {
   authToken: string;
   userRole: string;
   userProfile: any;
+  refreshTrigger?: number;
 }
 
-export default function SalesEntryView({ authToken, userRole, userProfile }: SalesEntryProps) {
+export default function SalesEntryView({ authToken, userRole, userProfile, refreshTrigger }: SalesEntryProps) {
   const { toast } = useToast();
   const [sales, setSales] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -340,7 +341,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile }: Sal
 
   useEffect(() => {
     fetchSalesData();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   // Helper to generate unit list (e.g., 1A, 1B, 2A, 2B, etc.)
   const generateUnits = (floors: number, unitsPerFloor: number): string[] => {

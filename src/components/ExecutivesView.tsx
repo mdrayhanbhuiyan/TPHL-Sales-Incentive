@@ -26,9 +26,10 @@ import { useToast } from './Toast';
 interface ExecutivesProps {
   authToken: string;
   userRole: string;
+  refreshTrigger?: number;
 }
 
-export default function ExecutivesView({ authToken, userRole }: ExecutivesProps) {
+export default function ExecutivesView({ authToken, userRole, refreshTrigger }: ExecutivesProps) {
   const { toast } = useToast();
   const [executives, setExecutives] = useState<any[]>([]);
   const [teams, setTeams] = useState<SalesTeam[]>([]);
@@ -91,7 +92,7 @@ export default function ExecutivesView({ authToken, userRole }: ExecutivesProps)
 
   useEffect(() => {
     fetchData();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const handleExportCSV = () => {
     const headers = [

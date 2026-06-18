@@ -29,9 +29,10 @@ interface DashboardProps {
   authToken: string;
   userRole?: string;
   userProfile?: any;
+  refreshTrigger?: number;
 }
 
-export default function DashboardView({ authToken, userRole, userProfile }: DashboardProps) {
+export default function DashboardView({ authToken, userRole, userProfile, refreshTrigger }: DashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
 
   useEffect(() => {
     loadDbStatus();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   const loadDashboardData = () => {
     setLoading(true);
@@ -165,7 +166,7 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
 
   useEffect(() => {
     loadDashboardData();
-  }, [authToken]);
+  }, [authToken, refreshTrigger]);
 
   if (loading) {
     return (
