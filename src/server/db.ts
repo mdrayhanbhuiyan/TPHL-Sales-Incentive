@@ -933,9 +933,12 @@ export async function initFirestore(): Promise<void> {
         migrated = true;
       }
     });
-    if (migrated) {
-      await writeStoreToFirestore(cachedStore);
-    }
+
+    // Always run calculation, cleaning & auto-healing sequence on startup to guarantee fully populated unit grids.
+    recalculateAllIncentivesDirect(cachedStore);
+
+    // Save the synced, migrated, and healed memory state back to persistent storage (Firestore/Supabase/local fallback path)
+    await writeStoreToFirestore(cachedStore);
   } catch (err) {
     console.error("[db.ts] Error pre-loading from CSV database:", err);
     cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
@@ -1019,6 +1022,40 @@ export function recalculateAllIncentivesDirect(store: DatabaseStore) {
   store.users = Array.isArray(store.users) ? store.users.filter(u => u && typeof u === 'object') : [];
   store.auditLogs = Array.isArray(store.auditLogs) ? store.auditLogs.filter(a => a && typeof a === 'object') : [];
   store.notifications = Array.isArray(store.notifications) ? store.notifications.filter(n => n && typeof n === 'object') : [];
+
+  // Auto-heal / Auto-generate missing unit registrations for any campaign/pre-sale project
+  const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+  let registrationHealed = false;
+  store.projectsOnSale.forEach(project => {
+    const fNum = Number(project.floor_number) || 1;
+    const uPerFloor = Number(project.units_per_floor) || 1;
+    
+    // Find already existing registrations for this campaign
+    const existing = store.unitRegistrations.filter(r => r.project_on_sale_id === project.id);
+    const existingMap = new Set(existing.map(r => String(r.unit_name).trim().toUpperCase()));
+
+    let projHealed = false;
+    for (let f = 1; f <= fNum; f++) {
+      for (let u = 0; u < uPerFloor; u++) {
+        const letter = letters[u] || String.fromCharCode(65 + u);
+        const uName = `${f}${letter}`;
+        if (!existingMap.has(uName)) {
+          store.unitRegistrations.push({
+            id: `reg-${generateUUID()}`,
+            project_on_sale_id: project.id,
+            unit_name: uName,
+            registered: 'No',
+            created_at: new Date().toISOString()
+          });
+          projHealed = true;
+          registrationHealed = true;
+        }
+      }
+    }
+    if (projHealed) {
+      console.log(`[db.ts] Automatically healed and generated all unit names for campaign "${project.project_name}" (${project.id})`);
+    }
+  });
 
   const rawSales = [...store.sales];
   
