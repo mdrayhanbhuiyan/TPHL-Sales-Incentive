@@ -1313,7 +1313,11 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   key text PRIMARY KEY,
   data jsonb NOT NULL,
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);`}
+);
+
+-- IMPORTANT: Disable Row Level Security (RLS) on this table so that your application 
+-- can sync and update live key records from the backend database server!
+ALTER TABLE sales_portal_data DISABLE ROW LEVEL SECURITY;`}
                   </pre>
                 </div>
                 <div className="bg-white/80 rounded-xl p-3 border border-indigo-200/40 space-y-1.5">

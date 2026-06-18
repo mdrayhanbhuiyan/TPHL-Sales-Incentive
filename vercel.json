@@ -1,6 +1,11 @@
 {
   "version": 2,
   "framework": "vite",
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "csv-data/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

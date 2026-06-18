@@ -144,18 +144,51 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 let cachedStore: DatabaseStore | null = null;
 let supabaseClient: any = null;
 
-// Initialize Supabase Client
+// Initialize Supabase Client safely with validation to prevent throws on placeholder values
 try {
-  const supabaseUrl = process.env.SUPABASE_URL || '';
-  const supabaseKey = process.env.SUPABASE_KEY || '';
-  if (supabaseUrl && supabaseKey) {
+  let supabaseUrl = (process.env.SUPABASE_URL || '').trim();
+  let supabaseKey = (process.env.SUPABASE_KEY || '').trim();
+
+  // Clean and filter out common placeholder/default strings
+  if (
+    supabaseUrl === 'YOUR_SUPABASE_URL' || 
+    supabaseUrl === 'placeholder' ||
+    supabaseUrl === 'undefined' || 
+    supabaseUrl === 'null' ||
+    supabaseUrl === ''
+  ) {
+    supabaseUrl = '';
+  }
+
+  if (
+    supabaseKey === 'YOUR_SUPABASE_KEY' || 
+    supabaseKey === 'placeholder' ||
+    supabaseKey === 'undefined' || 
+    supabaseKey === 'null' ||
+    supabaseKey === ''
+  ) {
+    supabaseKey = '';
+  }
+
+  // Validate that supabaseUrl is a proper URL starting with http:// or https://
+  let isValidUrl = false;
+  if (supabaseUrl) {
+    try {
+      const parsed = new URL(supabaseUrl);
+      isValidUrl = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (e) {
+      isValidUrl = false;
+    }
+  }
+
+  if (supabaseUrl && supabaseKey && isValidUrl) {
     supabaseClient = createClient(supabaseUrl, supabaseKey);
     console.log("[db.ts] Supabase client initialized successfully with URL: " + supabaseUrl);
   } else {
-    console.log("[db.ts] Supabase credentials not found in environment (SUPABASE_URL/SUPABASE_KEY empty).");
+    console.log("[db.ts] Supabase credentials not found or invalid. Working in highly-optimized local CSV database mode.");
   }
 } catch (err: any) {
-  console.error("[db.ts] Failed to initialize Supabase client:", err.message || err);
+  console.log("[db.ts] Safe notice: Supabase not used/configured (" + (err.message || err) + "). Falling back to local offline CSV storage.");
 }
 
 export const SCHEMA_HEADERS: { [key: string]: string[] } = {
@@ -695,13 +728,21 @@ export async function initFirestore(): Promise<void> {
           }
         }
         
-        if (loadedFromSupabase) {
+        if (loadedFromSupabase && cachedStore) {
           for (const key of keys) {
-            if (tempStore[key] !== undefined) {
+            if (tempStore[key] !== undefined && tempStore[key] !== null) {
               if (key === 'bonusRules') {
-                cachedStore.bonusRules = tempStore.bonusRules;
+                if (tempStore.bonusRules && typeof tempStore.bonusRules === 'object') {
+                  cachedStore.bonusRules = tempStore.bonusRules;
+                } else {
+                  console.warn(`[db.ts] Supabase key 'bonusRules' structure was invalid, keeping local pre-loaded fallback.`);
+                }
               } else {
-                (cachedStore as any)[key] = tempStore[key];
+                if (Array.isArray(tempStore[key])) {
+                  (cachedStore as any)[key] = tempStore[key];
+                } else {
+                  console.warn(`[db.ts] Supabase table record for key '${key}' was not returned as a valid array. Skipping key override to preserve core schema integrity.`);
+                }
               }
             }
           }

@@ -20,7 +20,8 @@ import {
   Sparkles,
   Star,
   Target,
-  Medal
+  Medal,
+  Database
 } from 'lucide-react';
 import ExecutiveIncentiveChart from './ExecutiveIncentiveChart';
 
@@ -37,6 +38,48 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'sale' | 'milestone' | 'project'>('all');
   const [heatmapMode, setHeatmapMode] = useState<'weekly' | 'kpis'>('weekly');
+  const [dbStatus, setDbStatus] = useState<{
+    status: 'loading' | 'success' | 'warning' | 'failed';
+    message: string;
+    projectId?: string;
+  }>({ status: 'loading', message: 'Checking backend sync state...' });
+
+  const loadDbStatus = () => {
+    fetch('/api/system/firebase-diagnostics', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Accept': 'application/json'
+      }
+    })
+    .then(async res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(payload => {
+      if (payload && payload.connectionTest) {
+        setDbStatus({
+          status: payload.connectionTest.status || 'failed',
+          message: payload.connectionTest.message || '',
+          projectId: payload.projectId
+        });
+      } else {
+        setDbStatus({
+          status: 'failed',
+          message: 'Received empty diagnostic packet from server.'
+        });
+      }
+    })
+    .catch(err => {
+      setDbStatus({
+        status: 'failed',
+        message: err.message || 'Verification link failed.'
+      });
+    });
+  };
+
+  useEffect(() => {
+    loadDbStatus();
+  }, [authToken]);
 
   const loadDashboardData = () => {
     setLoading(true);
@@ -196,10 +239,59 @@ export default function DashboardView({ authToken, userRole, userProfile }: Dash
   return (
     <div className="space-y-8">
       {/* Welcome Banner */}
-      <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-4 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Performance Summary</h1>
           <p className="mt-1 text-sm text-gray-500">Live operational overview of sales pipelines, team target fulfillment, and incentive distributions.</p>
+        </div>
+
+        {/* Supabase Connection Health Status Indicator */}
+        <div className="flex items-center gap-3 bg-gray-50 border border-gray-100/75 rounded-2xl px-4 py-2.5 shadow-3xs select-none shrink-0 self-start sm:self-center">
+          <div className={`p-1.5 rounded-lg border transition-colors duration-250 ${
+            dbStatus.status === 'success' 
+              ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+              : dbStatus.status === 'warning'
+              ? 'bg-amber-50 text-amber-600 border-amber-100'
+              : dbStatus.status === 'loading'
+              ? 'bg-indigo-50 text-indigo-600 border-indigo-100'
+              : 'bg-rose-50 text-rose-600 border-rose-100'
+          }`}>
+            <Database className={`w-4 h-4 ${dbStatus.status === 'loading' ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="text-left font-sans max-w-48 sm:max-w-64">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-gray-800 tracking-tight">Database Sync</span>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                dbStatus.status === 'success'
+                  ? 'bg-emerald-500'
+                  : dbStatus.status === 'warning'
+                  ? 'bg-amber-500'
+                  : dbStatus.status === 'loading'
+                  ? 'bg-indigo-400 animate-pulse'
+                  : 'bg-rose-500'
+              }`} />
+            </div>
+            <p className="text-[10px] text-gray-400 font-semibold truncate leading-none mt-0.5" title={dbStatus.message}>
+              {dbStatus.status === 'success' 
+                ? `Connected • ${dbStatus.projectId || 'Live Supabase'}` 
+                : dbStatus.status === 'loading'
+                ? 'Verifying live sync state...'
+                : dbStatus.status === 'warning'
+                ? 'Query Warning • Check Schema'
+                : 'Offline fallback (CSV mode)'}
+            </p>
+          </div>
+          {dbStatus.status !== 'loading' && (
+            <button 
+              onClick={loadDbStatus}
+              title="Refresh connection state"
+              className="p-1 hover:bg-gray-200/50 rounded-lg text-gray-400 hover:text-gray-600 transition cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4.79M13 10V3M8 14h5v5" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
