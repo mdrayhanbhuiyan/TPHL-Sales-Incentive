@@ -14,6 +14,7 @@ import {
   recalculateAllIncentives,
   recalculateAllIncentivesDirect,
   initFirestore,
+  syncWithFirestoreIfNeeded,
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
   getCSVDiagnostics,
@@ -58,6 +59,18 @@ export async function startServer() {
 
   const app = express();
   const PORT = 3000;
+
+  // Real-time Firebase Firestore synchronisation check for serverless environments (like Vercel)
+  app.use(async (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      try {
+        await syncWithFirestoreIfNeeded();
+      } catch (err: any) {
+        console.error("[server.ts] Error synchronising state from Firebase Firestore:", err.message || err);
+      }
+    }
+    next();
+  });
 
   // JSON Body Parser
   app.use(express.json({ limit: '10mb' }));

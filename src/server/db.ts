@@ -166,6 +166,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 let cachedStore: DatabaseStore | null = null;
 let supabaseClient: any = null;
 let firestoreDb: any = null;
+let lastLocalSyncTime = 0;
 
 // Initialize Firebase Firestore client safely with config
 try {
@@ -797,6 +798,134 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
   }
 }
 
+// Pull keys from Firebase Firestore directly to our memory cache
+export async function pullFromFirestore(): Promise<void> {
+  if (!firestoreDb) return;
+  const keys: (keyof DatabaseStore)[] = [
+    'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
+    'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
+    'notifications', 'projectsOnSale', 'unitRegistrations', 'rolePermissions'
+  ];
+  
+  let loadedFromFirebase = false;
+  const tempStore: any = {};
+
+  const promises = keys.map(async (key) => {
+    try {
+      const docRef = doc(firestoreDb, 'sales_portal_data', key);
+      const docSnap = await withTimeout<any>(
+        getDoc(docRef),
+        4000,
+        `Firestore load timeout for key ${key}`
+      );
+      if (docSnap.exists()) {
+        const fileData = docSnap.data();
+        if (fileData && fileData.data !== undefined) {
+          tempStore[key] = fileData.data;
+          loadedFromFirebase = true;
+        }
+      }
+    } catch (err: any) {
+      console.error(`[db.ts] Firebase error loading key '${key}':`, err.message || err);
+    }
+  });
+
+  await Promise.all(promises);
+
+  if (loadedFromFirebase && cachedStore) {
+    for (const key of keys) {
+      if (tempStore[key] !== undefined && tempStore[key] !== null) {
+        if (key === 'bonusRules') {
+          if (tempStore.bonusRules && typeof tempStore.bonusRules === 'object') {
+            cachedStore.bonusRules = tempStore.bonusRules;
+          }
+        } else if (key === 'rolePermissions') {
+          if (tempStore.rolePermissions && typeof tempStore.rolePermissions === 'object') {
+            cachedStore.rolePermissions = tempStore.rolePermissions;
+          }
+        } else {
+          if (Array.isArray(tempStore[key])) {
+            (cachedStore as any)[key] = tempStore[key];
+          }
+        }
+      }
+    }
+    console.log("[db.ts] Successfully pulled fresh operational dataset from Firebase Firestore!");
+  }
+}
+
+// Active synchronisation with Firebase Firestore on every request (Vercel-safe)
+export async function syncWithFirestoreIfNeeded(): Promise<void> {
+  if (!firestoreDb) return;
+  try {
+    const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
+    let storedHash = "";
+    let lastRemoteUpdate = 0;
+
+    try {
+      const metaSnap = await withTimeout<any>(
+        getDoc(metaRef),
+        3000,
+        "Firestore metadata load timeout"
+      );
+      if (metaSnap.exists()) {
+        const metaData = metaSnap.data();
+        storedHash = metaData?.deploymentHash || "";
+        lastRemoteUpdate = Number(metaData?.lastUpdatedAt) || 0;
+      }
+    } catch (err: any) {
+      console.log("[db.ts] Safe metadata read notice:", err.message || err);
+    }
+
+    if (!cachedStore) {
+      cachedStore = loadStoreFromCSV();
+    }
+
+    // 1. Calculate local deployment hash of the preloaded deployment bundle Setup keys
+    const setupKeyData = {
+      users: cachedStore.users,
+      projects: cachedStore.projects,
+      salesTeams: cachedStore.salesTeams,
+      teamProjects: cachedStore.teamProjects,
+      salesExecutives: cachedStore.salesExecutives,
+      incentiveRules: cachedStore.incentiveRules,
+      bonusRules: cachedStore.bonusRules,
+      projectsOnSale: cachedStore.projectsOnSale,
+      unitRegistrations: cachedStore.unitRegistrations,
+      rolePermissions: cachedStore.rolePermissions
+    };
+    const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
+
+    // 2. Hash Mismatch: New Vercel Deployment with code updates or updated CSV setup has run!
+    if (currentLocalHash !== storedHash) {
+      console.log(`[db.ts] New deployment detected (local: ${currentLocalHash}, remote: ${storedHash}). Overwriting Firebase database state with Vercel preloaded/updated files...`);
+      
+      // Seed/Recalculate everything to prepare fresh dataset
+      recalculateAllIncentivesDirect(cachedStore);
+      
+      // Save it directly to Firestore
+      await saveStoreToFirestore(cachedStore);
+      
+      // Record new deployment details in Firestore metadata
+      const nowEpoch = Date.now();
+      await setDoc(metaRef, { deploymentHash: currentLocalHash, lastUpdatedAt: nowEpoch });
+      lastLocalSyncTime = nowEpoch;
+      console.log("[db.ts] Vercel-deployed data successfully propagated to Firebase Firestore!");
+    } else {
+      // 3. Hashes match: Operational mode. If the remote was modified by transactions, pull them!
+      if (lastRemoteUpdate > lastLocalSyncTime) {
+        console.log(`[db.ts] In-memory cache is cold (local: ${lastLocalSyncTime}, remote: ${lastRemoteUpdate}). Pulling latest active transactions from Firebase Firestore...`);
+        await pullFromFirestore();
+        lastLocalSyncTime = lastRemoteUpdate;
+      } else {
+        // Cache is already hot and operational, serve immediately with zero overhead
+      }
+    }
+  } catch (err: any) {
+    console.error("[db.ts] Safe synchronization check exception:", err.message || err);
+  }
+}
+
 // Asynchronously bootstrap the state from CSV storage and live Firebase Firestore at server boot-up
 export async function initFirestore(): Promise<void> {
   console.log("[db.ts] Pre-loading sales portal state from local CSV directory storage...");
@@ -806,119 +935,7 @@ export async function initFirestore(): Promise<void> {
 
     // Check and sync database from Firebase Firestore
     if (firestoreDb) {
-      try {
-        const keys: (keyof DatabaseStore)[] = [
-          'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
-          'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
-          'notifications', 'projectsOnSale', 'unitRegistrations', 'rolePermissions'
-        ];
-
-        // 1. Fetch deployment hash metadata from Firestore
-        let storedHash = "";
-        try {
-          const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
-          const metaSnap = await withTimeout<any>(
-            getDoc(metaRef),
-            3000,
-            "Firestore load timeout for metadata"
-          );
-          if (metaSnap.exists()) {
-            storedHash = metaSnap.data()?.deploymentHash || "";
-          }
-        } catch (err) {
-          console.log("[db.ts] No metadata/deploymentHash found in Firestore, proceeding (will run sync).");
-        }
-
-        // 2. Compute current local deployment hash based on Core Setup Keys
-        const setupKeyData = {
-          users: cachedStore.users,
-          projects: cachedStore.projects,
-          salesTeams: cachedStore.salesTeams,
-          teamProjects: cachedStore.teamProjects,
-          salesExecutives: cachedStore.salesExecutives,
-          incentiveRules: cachedStore.incentiveRules,
-          bonusRules: cachedStore.bonusRules,
-          projectsOnSale: cachedStore.projectsOnSale,
-          unitRegistrations: cachedStore.unitRegistrations,
-          rolePermissions: cachedStore.rolePermissions
-        };
-        const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
-
-        console.log(`[db.ts] Local Deployment Hash: ${currentLocalHash}, Stored Firestore Hash: ${storedHash}`);
-
-        // 3. If there's a hash mismatch, a new Vercel deployment with updated data occurred!
-        if (currentLocalHash !== storedHash) {
-          console.log("[db.ts] New deployment or local database update detected! Overwriting/updating Firebase Firestore state...");
-          
-          // Recalculate local state sequence
-          recalculateAllIncentivesDirect(cachedStore);
-          
-          // Propagate and save this fresh preloaded store to Firestore
-          await saveStoreToFirestore(cachedStore);
-
-          // Save the new hash to Firestore metadata
-          try {
-            const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
-            await setDoc(metaRef, { deploymentHash: currentLocalHash, updatedAt: new Date().toISOString() });
-            console.log("[db.ts] Successfully recorded new deployment metadata hash in Firebase Firestore!");
-          } catch (err) {
-            console.error("[db.ts] Failed to save deployment metadata hash to Firestore:", err);
-          }
-        } else {
-          // No new deployment/code update; load the existing active production dataset from Firestore
-          console.log("[db.ts] No Vercel deployment update detected (hashes match). Keeping live Firestore database state...");
-          
-          let loadedFromFirebase = false;
-          const tempStore: any = {};
-
-          const promises = keys.map(async (key) => {
-            try {
-              const docRef = doc(firestoreDb, 'sales_portal_data', key);
-              const docSnap = await withTimeout<any>(
-                getDoc(docRef),
-                5000,
-                `Firestore load timeout for key ${key}`
-              );
-              if (docSnap.exists()) {
-                const fileData = docSnap.data();
-                if (fileData && fileData.data !== undefined) {
-                  tempStore[key] = fileData.data;
-                  loadedFromFirebase = true;
-                }
-              }
-            } catch (err: any) {
-              console.error(`[db.ts] Firebase error loading key '${key}':`, err.message || err);
-            }
-          });
-
-          await Promise.all(promises);
-
-          if (loadedFromFirebase && cachedStore) {
-            for (const key of keys) {
-              if (tempStore[key] !== undefined && tempStore[key] !== null) {
-                if (key === 'bonusRules') {
-                  if (tempStore.bonusRules && typeof tempStore.bonusRules === 'object') {
-                    cachedStore.bonusRules = tempStore.bonusRules;
-                  }
-                } else if (key === 'rolePermissions') {
-                  if (tempStore.rolePermissions && typeof tempStore.rolePermissions === 'object') {
-                    cachedStore.rolePermissions = tempStore.rolePermissions;
-                  }
-                } else {
-                  if (Array.isArray(tempStore[key])) {
-                    (cachedStore as any)[key] = tempStore[key];
-                  }
-                }
-              }
-            }
-            console.log("[db.ts] Successfully synchronized and adopted production dataset from Firebase Firestore!");
-          } else {
-            console.log("[db.ts] Key datasets were empty in Firestore. Working on top of preloaded backups.");
-          }
-        }
-      } catch (err: any) {
-        console.warn("[db.ts] Gracefully bypassed Firebase Firestore read/hash sync on boot:", err.message || err);
-      }
+      await syncWithFirestoreIfNeeded();
     }
 
     if (supabaseClient) {
