@@ -142,6 +142,48 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     }
   };
 
+  // Dynamic Role-Based Permission Control States
+  const [selectedPermissionRole, setSelectedPermissionRole] = useState<'Admin' | 'Sales Team Leader' | 'Sales Executive'>('Sales Team Leader');
+  const [allPermissions, setAllPermissions] = useState<any>({
+    'Admin': {
+      allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'executives', 'rules', 'sales', 'incentives', 'docs', 'settings'],
+      allowedEdits: ['projects', 'teams', 'executives', 'rules', 'sales', 'registration', 'projects-on-sale', 'role-permissions']
+    },
+    'Sales Team Leader': {
+      allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'sales', 'incentives', 'docs'],
+      allowedEdits: ['sales']
+    },
+    'Sales Executive': {
+      allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'sales', 'incentives', 'docs'],
+      allowedEdits: ['sales']
+    }
+  });
+  const [savingPermissions, setSavingPermissions] = useState(false);
+
+  const handleSavePermissions = async () => {
+    setSavingPermissions(true);
+    try {
+      const res = await fetch('/api/permissions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ permissions: allPermissions })
+      });
+      if (res.ok) {
+        toast.success("Access control policies updated successfully in Firebase Firestore!");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to save dynamic permissions.");
+      }
+    } catch (err: any) {
+      toast.error("Network error: " + err.message);
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
   const runDiagnostics = async () => {
     setDiagLoading(true);
     setDiagError(null);
@@ -202,6 +244,15 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
       });
       const nData = await nRes.json();
       setNotifList(nData);
+
+      // Load dynamic role-based permissions
+      const pRes = await fetch('/api/permissions', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        setAllPermissions(pData);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1710,6 +1761,168 @@ ALTER TABLE sales_portal_data DISABLE ROW LEVEL SECURITY;`}
           )}
         </div>
       </div>
+
+      {/* ROLE BASED ACCESS CONTROL SECTION */}
+      {userRole === 'Admin' && (
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+          <div className="flex items-center gap-3 border-b border-gray-50 pb-4">
+            <div className="p-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <ShieldCheck className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-gray-800">Dynamic Role-Based Access Control Policies</h2>
+              <p className="text-[11px] text-gray-400">Configure screen visibility and action editing permissions across various platform roles.</p>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 leading-normal">
+            Define exactly what components and views are loaded for user roles. Changes are stored persistently in **Firebase Firestore** and take effect system-wide.
+          </p>
+
+          <div className="flex gap-2 bg-gray-50 p-1 rounded-xl">
+            {(['Admin', 'Sales Team Leader', 'Sales Executive'] as const).map(role => (
+              <button
+                key={role}
+                onClick={() => setSelectedPermissionRole(role)}
+                className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition cursor-pointer select-none ${
+                  selectedPermissionRole === role
+                    ? 'bg-white text-indigo-600 shadow-3xs'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {role}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 pt-2">
+            {/* COLUMN 1: ALLOWED VIEWS */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] font-extrabold text-gray-400 tracking-wider uppercase">1. Page Screen Visibility</span>
+                <span className="text-[10px] text-gray-400 font-mono">Select visible items</span>
+              </div>
+              <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-2">
+                {[
+                  { id: 'dashboard', label: '📊 Performance Analytics' },
+                  { id: 'projects-on-sale', label: '🏷️ Projects On Sale' },
+                  { id: 'registration', label: '🔑 Unit Registration' },
+                  { id: 'projects', label: '🏢 Projects Directory' },
+                  { id: 'teams', label: '👥 Sales Divisions' },
+                  { id: 'executives', label: '👤 Sales Executives' },
+                  { id: 'rules', label: '⚙️ Incentive Engine Rules' },
+                  { id: 'sales', label: '✍️ Log Sales entries' },
+                  { id: 'incentives', label: '💵 Incentive Claims & Reports' },
+                  { id: 'docs', label: '📄 System Schemas Docs' },
+                  { id: 'settings', label: '🛠️ System Maintenance' }
+                ].map(view => {
+                  const isChecked = allPermissions[selectedPermissionRole]?.allowedViews?.includes(view.id) || false;
+                  return (
+                    <label 
+                      key={view.id}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs cursor-pointer select-none transition ${
+                        isChecked 
+                          ? 'bg-indigo-50/40 border-indigo-150/40 text-gray-700 font-medium' 
+                          : 'bg-white border-gray-100 text-gray-500 hover:bg-gray-50/50'
+                      }`}
+                    >
+                      <span>{view.label}</span>
+                      <input 
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={selectedPermissionRole === 'Admin'} // Admin has always all views
+                        onChange={(e) => {
+                          const list = [...(allPermissions[selectedPermissionRole]?.allowedViews || [])];
+                          if (e.target.checked) {
+                            list.push(view.id);
+                          } else {
+                            const idx = list.indexOf(view.id);
+                            if (idx > -1) list.splice(idx, 1);
+                          }
+                          setAllPermissions({
+                            ...allPermissions,
+                            [selectedPermissionRole]: {
+                              ...allPermissions[selectedPermissionRole],
+                              allowedViews: list
+                            }
+                          });
+                        }}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* COLUMN 2: ALLOWED EDITS */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                <span className="text-[11px] font-extrabold text-gray-400 tracking-wider uppercase">2. Editing & Action Privileges</span>
+                <span className="text-[10px] text-gray-400 font-mono">Select writable actions</span>
+              </div>
+              <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-2">
+                {[
+                  { id: 'projects', label: '🏢 Register & modify Projects Directory' },
+                  { id: 'teams', label: '👥 Write & update Sales Team Divisions' },
+                  { id: 'executives', label: '👤 Add & maintain Sales Executives' },
+                  { id: 'rules', label: '⚙️ Configure incentive evaluation rules' },
+                  { id: 'sales', label: '✍️ Submit & retract bookings and sales' },
+                  { id: 'registration', label: '🔑 Manage apartment block registries' },
+                  { id: 'projects-on-sale', label: '🏷️ Create campaigns & rate structures' },
+                  { id: 'role-permissions', label: '🛡️ Overwrite access policy matrices' }
+                ].map(action => {
+                  const isChecked = allPermissions[selectedPermissionRole]?.allowedEdits?.includes(action.id) || false;
+                  return (
+                    <label 
+                      key={action.id}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs cursor-pointer select-none transition ${
+                        isChecked 
+                          ? 'bg-indigo-50/40 border-indigo-150/40 text-gray-700 font-medium' 
+                          : 'bg-white border-gray-100 text-gray-500 hover:bg-gray-50/50'
+                      }`}
+                    >
+                      <span>{action.label}</span>
+                      <input 
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={selectedPermissionRole === 'Admin'} // Admin has always all edits
+                        onChange={(e) => {
+                          const list = [...(allPermissions[selectedPermissionRole]?.allowedEdits || [])];
+                          if (e.target.checked) {
+                            list.push(action.id);
+                          } else {
+                            const idx = list.indexOf(action.id);
+                            if (idx > -1) list.splice(idx, 1);
+                          }
+                          setAllPermissions({
+                            ...allPermissions,
+                            [selectedPermissionRole]: {
+                              ...allPermissions[selectedPermissionRole],
+                              allowedEdits: list
+                            }
+                          });
+                        }}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 flex justify-end">
+            <button
+              onClick={handleSavePermissions}
+              disabled={savingPermissions || selectedPermissionRole === 'Admin'}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer select-none"
+            >
+              {savingPermissions ? 'Saving Access Policies...' : 'Save Access Control Policy'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CSV Database backup & restore */}
       <div className="mt-6">

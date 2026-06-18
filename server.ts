@@ -85,6 +85,25 @@ export async function startServer() {
     next();
   };
 
+  // Helper to dynamically check role-based permissions
+  const hasEditPermission = (user: any, actionKey: string): boolean => {
+    if (!user) return false;
+    if (user.role === 'Admin') return true;
+    
+    const store = getStore();
+    const perms = store.rolePermissions?.[user.role];
+    if (perms) {
+      return perms.allowedEdits.includes(actionKey);
+    }
+    
+    // Default fallback rules
+    const defaults: { [key: string]: string[] } = {
+      'Sales Team Leader': ['sales'],
+      'Sales Executive': ['sales']
+    };
+    return (defaults[user.role] || []).includes(actionKey);
+  };
+
   // --- AUTHENTICATION API ---
   app.post('/api/auth/login', (req, res) => {
     const { email, password } = req.body;
@@ -114,6 +133,21 @@ export async function startServer() {
       return;
     }
 
+    const rolePermissions = store.rolePermissions || {
+      'Admin': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'executives', 'rules', 'sales', 'incentives', 'docs', 'settings'],
+        allowedEdits: ['projects', 'teams', 'executives', 'rules', 'sales', 'registration', 'projects-on-sale', 'role-permissions']
+      },
+      'Sales Team Leader': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      },
+      'Sales Executive': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      }
+    };
+
     logAction(user, "User Login", `Logged in successfully via JWT-mimic token.`);
     res.json({
       token: user.id, // User ID functions as our secure JWT-mimic token
@@ -123,14 +157,36 @@ export async function startServer() {
         name: user.name,
         role: user.role,
         employee_id: user.employee_id,
-        team_id: user.team_id
+        team_id: user.team_id,
+        permissions: rolePermissions[user.role] || { allowedViews: [], allowedEdits: [] }
       }
     });
   });
 
   // Get currently logged-in user profile
   app.get('/api/auth/me', authenticateToken, (req, res) => {
-    res.json({ user: (req as any).user });
+    const user = (req as any).user;
+    const store = getStore();
+    const rolePermissions = store.rolePermissions || {
+      'Admin': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'executives', 'rules', 'sales', 'incentives', 'docs', 'settings'],
+        allowedEdits: ['projects', 'teams', 'executives', 'rules', 'sales', 'registration', 'projects-on-sale', 'role-permissions']
+      },
+      'Sales Team Leader': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      },
+      'Sales Executive': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      }
+    };
+    res.json({ 
+      user: {
+        ...user,
+        permissions: rolePermissions[user.role] || { allowedViews: [], allowedEdits: [] }
+      } 
+    });
   });
 
   // --- ANALYTICS & DASHBOARD API ---
@@ -592,8 +648,8 @@ export async function startServer() {
 
   app.post('/api/projects', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can managed projects." });
+    if (!hasEditPermission(user, 'projects')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage projects." });
       return;
     }
 
@@ -648,8 +704,8 @@ export async function startServer() {
 
   app.post('/api/projects/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can managed projects." });
+    if (!hasEditPermission(user, 'projects')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage projects." });
       return;
     }
 
@@ -758,8 +814,8 @@ export async function startServer() {
 
   app.put('/api/projects/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only admins can execute this action" });
+    if (!hasEditPermission(user, 'projects')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit projects." });
       return;
     }
 
@@ -794,8 +850,8 @@ export async function startServer() {
 
   app.delete('/api/projects/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only admins can perform deletion." });
+    if (!hasEditPermission(user, 'projects')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to delete projects." });
       return;
     }
 
@@ -829,8 +885,8 @@ export async function startServer() {
 
   app.post('/api/projects-on-sale/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can manage projects on sale." });
+    if (!hasEditPermission(user, 'projects-on-sale')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage campaigns." });
       return;
     }
 
@@ -911,8 +967,8 @@ export async function startServer() {
 
   app.post('/api/projects-on-sale', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can manage projects on sale." });
+    if (!hasEditPermission(user, 'projects-on-sale')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage campaigns." });
       return;
     }
 
@@ -965,8 +1021,8 @@ export async function startServer() {
 
   app.put('/api/projects-on-sale/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can edit projects on sale." });
+    if (!hasEditPermission(user, 'projects-on-sale')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit campaigns." });
       return;
     }
 
@@ -1037,8 +1093,8 @@ export async function startServer() {
 
   app.delete('/api/projects-on-sale/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can delete projects on sale." });
+    if (!hasEditPermission(user, 'projects-on-sale')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to delete campaigns." });
       return;
     }
 
@@ -1066,6 +1122,10 @@ export async function startServer() {
 
   app.put('/api/unit-registrations/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
+    if (!hasEditPermission(user, 'registration')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to update unit registrations." });
+      return;
+    }
     const { registered, registration_date } = req.body;
 
     const store = getStore();
@@ -1093,8 +1153,8 @@ export async function startServer() {
 
   app.post('/api/unit-registrations/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Only Admins can bulk manage unit registrations." });
+    if (!hasEditPermission(user, 'registration')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to bulk update unit registrations." });
       return;
     }
 
@@ -1192,8 +1252,8 @@ export async function startServer() {
 
   app.post('/api/teams', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'teams')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage teams." });
       return;
     }
 
@@ -1232,8 +1292,8 @@ export async function startServer() {
 
   app.put('/api/teams/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'teams')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit teams." });
       return;
     }
 
@@ -1280,8 +1340,8 @@ export async function startServer() {
 
   app.post('/api/teams/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'teams')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to bulk configure teams." });
       return;
     }
 
@@ -1360,8 +1420,8 @@ export async function startServer() {
 
   app.delete('/api/teams/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'teams')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to delete teams." });
       return;
     }
 
@@ -1405,8 +1465,8 @@ export async function startServer() {
 
   app.post('/api/executives', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin credentials required" });
+    if (!hasEditPermission(user, 'executives')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage executives." });
       return;
     }
 
@@ -1457,8 +1517,8 @@ export async function startServer() {
 
   app.post('/api/executives/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin credentials required" });
+    if (!hasEditPermission(user, 'executives')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to bulk configure executives." });
       return;
     }
 
@@ -1549,8 +1609,8 @@ export async function startServer() {
 
   app.put('/api/executives/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'executives')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit executives." });
       return;
     }
 
@@ -1587,8 +1647,8 @@ export async function startServer() {
 
   app.delete('/api/executives/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'executives')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to delete executives." });
       return;
     }
 
@@ -1625,8 +1685,8 @@ export async function startServer() {
 
   app.put('/api/rules/project/:project_id', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'rules')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to manage incentive rules." });
       return;
     }
 
@@ -1669,8 +1729,8 @@ export async function startServer() {
 
   app.put('/api/rules/global-bonus', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'rules')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit global bonus configs." });
       return;
     }
 
@@ -1690,8 +1750,8 @@ export async function startServer() {
 
   app.post('/api/rules/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
-    if (user.role !== 'Admin') {
-      res.status(403).json({ error: "Admin access required" });
+    if (!hasEditPermission(user, 'rules')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to bulk configure rules." });
       return;
     }
 
@@ -1828,6 +1888,10 @@ export async function startServer() {
 
   app.post('/api/sales', authenticateToken, (req, res) => {
     const user = (req as any).user;
+    if (!hasEditPermission(user, 'sales')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to log sales entries." });
+      return;
+    }
     
     // Sales Executive or Admin can enter sales
     const { project_id, unit_name, unit_measure, floor_number, sale_date, executive_id, project_on_sale_id } = req.body;
@@ -1884,6 +1948,10 @@ export async function startServer() {
 
   app.post('/api/sales/bulk', authenticateToken, (req, res) => {
     const user = (req as any).user;
+    if (!hasEditPermission(user, 'sales')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to bulk configure sales." });
+      return;
+    }
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "Missing or invalid items array for bulk import." });
@@ -2015,6 +2083,10 @@ export async function startServer() {
 
   app.put('/api/sales/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
+    if (!hasEditPermission(user, 'sales')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to edit sales entries." });
+      return;
+    }
     const store = getStore();
     const sIndex = store.sales.findIndex(s => s.id === req.params.id);
 
@@ -2050,6 +2122,10 @@ export async function startServer() {
 
   app.delete('/api/sales/:id', authenticateToken, (req, res) => {
     const user = (req as any).user;
+    if (!hasEditPermission(user, 'sales')) {
+      res.status(403).json({ error: "Unauthorized: You do not have permission to delete sales entries." });
+      return;
+    }
     const store = getStore();
     const sale = store.sales.find(s => s.id === req.params.id);
 
@@ -2124,6 +2200,47 @@ export async function startServer() {
     const finalIncentives = resolved;
 
     res.json(finalIncentives);
+  });
+
+  // --- ROLE BASED PERMISSIONS API ---
+  app.get('/api/permissions', authenticateToken, (req, res) => {
+    const store = getStore();
+    const perms = store.rolePermissions || {
+      'Admin': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'executives', 'rules', 'sales', 'incentives', 'docs', 'settings'],
+        allowedEdits: ['projects', 'teams', 'executives', 'rules', 'sales', 'registration', 'projects-on-sale', 'role-permissions']
+      },
+      'Sales Team Leader': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'projects', 'teams', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      },
+      'Sales Executive': {
+        allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'sales', 'incentives', 'docs'],
+        allowedEdits: ['sales']
+      }
+    };
+    res.json(perms);
+  });
+
+  app.post('/api/permissions', authenticateToken, (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Only system Administrators can overwrite permission policies." });
+      return;
+    }
+
+    const { permissions } = req.body;
+    if (!permissions || typeof permissions !== 'object') {
+      res.status(400).json({ error: "Invalid permissions JSON object" });
+      return;
+    }
+
+    const store = getStore();
+    store.rolePermissions = permissions;
+    writeStore(store);
+
+    logAction(user, "Configure Policies", "Updated role-based viewing and editing permissions.");
+    res.json({ success: true, permissions });
   });
 
   // --- SYSTEM SETTINGS, BACKUP & RESTORE APP ---

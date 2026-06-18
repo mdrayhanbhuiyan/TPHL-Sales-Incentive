@@ -72,11 +72,55 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Authenticate on startup
+  // Simulation and dynamic permission tracking
+  const [allRolePermissions, setAllRolePermissions] = useState<any>(null);
+  const [simulatedRole, setSimulatedRole] = useState<string | null>(null);
+
+  const effectiveRole = simulatedRole || userProfile?.role || 'Admin';
+  const effectivePermissions = allRolePermissions?.[effectiveRole] || userProfile?.permissions || {
+    allowedViews: ['dashboard', 'projects-on-sale', 'registration', 'sales', 'incentives', 'docs'],
+    allowedEdits: ['sales']
+  };
+
+  // Authenticate and load permissions state on startup
   useEffect(() => {
-    localStorage.setItem('tphl_token', 'u-admin');
-    fetchUnreadNotifications('u-admin');
+    const defaultToken = 'u-admin';
+    localStorage.setItem('tphl_token', defaultToken);
+    fetchUnreadNotifications(defaultToken);
+    loadGlobalAccessPolicies(defaultToken);
   }, []);
+
+  useEffect(() => {
+    if (authToken) {
+      loadGlobalAccessPolicies(authToken);
+    }
+  }, [authToken]);
+
+  const loadGlobalAccessPolicies = (token: string) => {
+    // Sync active profile schema
+    fetch('/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.user) {
+        setUserProfile(data.user);
+      }
+    })
+    .catch(err => console.error(err));
+
+    // Get current Cloud Policies from Firestore
+    fetch('/api/permissions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data && typeof data === 'object') {
+        setAllRolePermissions(data);
+      }
+    })
+    .catch(err => console.error("Failed to load Firebase permission boundaries configuration:", err));
+  };
 
   const fetchUnreadNotifications = (token: string) => {
     fetch('/api/system/notifications', {
@@ -94,14 +138,17 @@ export default function App() {
     localStorage.setItem('tphl_token', token);
     setAuthToken(token);
     setUserProfile(user);
+    setSimulatedRole(null);
     setActiveRoute('dashboard');
     fetchUnreadNotifications(token);
+    loadGlobalAccessPolicies(token);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('tphl_token');
     setAuthToken(null);
     setUserProfile(null);
+    setSimulatedRole(null);
   };
 
   if (checkingAuth) {
@@ -135,7 +182,13 @@ export default function App() {
     { id: 'settings', label: 'System Maintenance', icon: Settings, roles: ['Admin'] },
   ];
 
-  const visibleMenuItems = menuItems.filter(item => item.roles.includes(userProfile.role));
+  const visibleMenuItems = menuItems.filter(item => {
+    if (effectiveRole === 'Admin') return true;
+    if (effectivePermissions && Array.isArray(effectivePermissions.allowedViews)) {
+      return effectivePermissions.allowedViews.includes(item.id);
+    }
+    return item.roles.includes(effectiveRole);
+  });
 
   const renderActiveView = () => {
     switch (activeRoute) {
@@ -197,8 +250,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* User profile capsule */}
-        <div className={`rounded-2xl p-4 flex items-center justify-between border ${isDarkMode ? 'bg-slate-800/50 border-slate-705/30' : 'bg-gray-105/50 border-gray-100'}`}>
+        {/* User profile capsule with Sim Switcher for Admins */}
+        <div className={`rounded-2xl p-4 space-y-3 border ${isDarkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-gray-50 border-gray-100'}`}>
           <div 
             onClick={() => setIsProfileModalOpen(true)}
             className="space-y-0.5 truncate pr-2 cursor-pointer group flex-1"
@@ -209,11 +262,42 @@ export default function App() {
               <span className="text-[9px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-400 font-bold uppercase px-1.5 py-0.5 rounded-full tracking-wider select-none font-mono">
                 {userProfile.role === 'Sales Team Leader' ? 'Leader' : userProfile.role === 'Sales Executive' ? 'Executive' : 'Admin'}
               </span>
+              {simulatedRole && (
+                <span className="text-[9px] bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 font-bold uppercase px-1.5 py-0.5 rounded-full tracking-wider select-none font-mono">
+                  Simulating
+                </span>
+              )}
             </div>
             {userProfile.employee_id && (
-              <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono tracking-wider font-bold">ID: {userProfile.employee_id}</span>
+              <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono tracking-wider font-bold block mt-1">ID: {userProfile.employee_id}</span>
             )}
           </div>
+
+          {(userProfile.role === 'Admin' || simulatedRole) && (
+            <div className="pt-2 border-t border-gray-200/50 dark:border-slate-800">
+              <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Simulate Role View</label>
+              <select
+                value={effectiveRole}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSimulatedRole(val === 'Admin' ? null : val);
+                  const mockPerms = allRolePermissions?.[val] || userProfile.permissions || { allowedViews: [] };
+                  if (val !== 'Admin' && (!mockPerms.allowedViews || !mockPerms.allowedViews.includes(activeRoute))) {
+                    setActiveRoute('dashboard');
+                  }
+                }}
+                className={`w-full bg-transparent border rounded-lg px-2 py-1 text-[10px] font-semibold focus:ring-1 outline-hidden cursor-pointer ${
+                  isDarkMode 
+                    ? 'border-slate-800 text-slate-300 focus:ring-indigo-500 bg-slate-900' 
+                    : 'border-gray-200 text-gray-700 focus:ring-indigo-500 bg-white'
+                }`}
+              >
+                <option value="Admin">🔑 Full System Admin</option>
+                <option value="Sales Team Leader">👤 Sales Team Leader</option>
+                <option value="Sales Executive">🌱 Sales Executive</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Navigation list */}
