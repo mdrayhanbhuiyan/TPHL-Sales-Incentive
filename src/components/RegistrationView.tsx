@@ -37,6 +37,7 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
   
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // UI filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,7 +247,10 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
 
   const fetchInitialData = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
+      let currentError: string | null = null;
+
       // 1. Fetch campaigns on sale
       try {
         const posRes = await fetch('/api/projects-on-sale', {
@@ -264,9 +268,11 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
           }
         } else {
           console.warn("[RegistrationView] Failed to fetch campaigns on sale. Status: " + posRes.status);
+          currentError = `Failed to fetch campaigns on sale: HTTP ${posRes.status}`;
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Error fetching projects-on-sale:", e);
+        currentError = e.message || "Error fetching projects-on-sale";
       }
 
       // 2. Fetch directory projects
@@ -282,9 +288,11 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
           setDirectoryProjects(Array.isArray(dirData) ? dirData : []);
         } else {
           console.warn("[RegistrationView] Failed to fetch directory projects. Status: " + dirRes.status);
+          if (!currentError) currentError = `Failed to fetch directory projects: HTTP ${dirRes.status}`;
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Error fetching directory projects:", e);
+        if (!currentError) currentError = e.message || "Error fetching directory projects";
       }
 
       // 3. Fetch registrations
@@ -302,12 +310,17 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
           console.warn("[RegistrationView] Failed to fetch registrations data. Status: " + regRes.status);
           throw new Error("HTTP " + regRes.status);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed loading registrations data", e);
+        if (!currentError) currentError = e.message || "Failed loading registrations data";
       }
 
-    } catch (e) {
+      if (currentError) {
+        setErrorMsg(currentError);
+      }
+    } catch (e: any) {
       console.error("Global registrations load exception:", e);
+      setErrorMsg(e.message || "Global registrations load exception");
     } finally {
       setLoading(false);
     }
@@ -436,6 +449,27 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
       {loading ? (
         <div className="flex justify-center items-center py-20 animate-pulse">
           <div className="w-8 h-8 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+        </div>
+      ) : errorMsg ? (
+        <div className="bg-white dark:bg-slate-900 border border-red-100 dark:border-red-950/40 rounded-3xl p-12 text-center max-w-lg mx-auto space-y-4 shadow-sm" id="registration-error-fallback">
+          <div className="w-12 h-12 bg-red-50 dark:bg-red-950/20 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+            <XCircle className="w-6 h-6 text-red-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Connection or Setup Issue</h3>
+            <p className="text-xs text-gray-500 max-w-xs mx-auto mt-1">
+              {errorMsg === "Load failed" || errorMsg.includes("pattern") 
+                ? "The development server is booting up or unreachable. Please double-check connection or try again."
+                : errorMsg}
+            </p>
+          </div>
+          <button
+            onClick={() => fetchInitialData()}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-2.5 px-6 rounded-xl cursor-pointer text-xs active:scale-95 transition shadow-md shadow-indigo-500/10"
+            id="registration-retry-btn"
+          >
+            Try Again
+          </button>
         </div>
       ) : projectsOnSale.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-12 text-center text-gray-400 max-w-lg mx-auto space-y-3">
