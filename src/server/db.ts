@@ -656,25 +656,27 @@ async function processWriteQueue(): Promise<void> {
         ];
 
         const sanitizedStore = removeUndefined(task.store);
+        const upsertRows = keys.map(key => ({
+          key: key,
+          data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : []
+        }));
 
-        for (const key of keys) {
-          const keyValue = sanitizedStore[key] !== undefined ? sanitizedStore[key] : [];
-          const { error } = await withTimeout<any>(
-            supabaseClient
-              .from('sales_portal_data')
-              .upsert({ key: key, data: keyValue }, { onConflict: 'key' }),
-            4000,
-            `Supabase write timeout for key ${key}`
-          );
+        const { error } = await withTimeout<any>(
+          supabaseClient
+            .from('sales_portal_data')
+            .upsert(upsertRows, { onConflict: 'key' }),
+          8000,
+          "Supabase write batch upsert timeout"
+        );
 
-          if (error) {
-            console.error(`[db.ts] Failed to upsert key ${key} to Supabase:`, error.message);
-            if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
-              console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
-            }
+        if (error) {
+          console.error("[db.ts] Failed to batch upsert state to Supabase:", error.message);
+          if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+            console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
           }
+        } else {
+          console.log("[db.ts] Successfully synchronized database state to Supabase in a single batch operation!");
         }
-        console.log("[db.ts] Successfully synchronized database state to Supabase!");
       }
 
       task.resolve();
@@ -733,24 +735,24 @@ export async function initFirestore(): Promise<void> {
         let loadedFromSupabase = false;
         const tempStore: any = {};
         
-        for (const key of keys) {
-          const { data, error } = await withTimeout<any>(
-            supabaseClient
-              .from('sales_portal_data')
-              .select('data')
-              .eq('key', key)
-              .maybeSingle(),
-            4000,
-            `Supabase load timeout for key ${key}`
-          );
-          
-          if (!error && data) {
-            tempStore[key] = data.data;
-            loadedFromSupabase = true;
-          } else if (error) {
-            console.warn(`[db.ts] Supabase error loading key ${key}:`, error.message || error);
-            if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
-              console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+        const { data: records, error } = await withTimeout<any>(
+          supabaseClient
+            .from('sales_portal_data')
+            .select('key, data'),
+          6000,
+          "Supabase load batch query timeout"
+        );
+        
+        if (error) {
+          console.warn("[db.ts] Supabase batch query encountered an error during boot synchronization:", error.message || error);
+          if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+            console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+          }
+        } else if (records && Array.isArray(records)) {
+          for (const row of records) {
+            if (row && row.key && row.data !== undefined && row.data !== null) {
+              tempStore[row.key] = row.data;
+              loadedFromSupabase = true;
             }
           }
         }
