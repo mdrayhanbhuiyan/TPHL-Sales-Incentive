@@ -54,8 +54,8 @@ const DEFAULT_STORE: DatabaseStore = {
   users: [
     {
       id: "u-admin",
-      email: "admin@tphl.com",
-      name: "TPHL Management",
+      email: "rayhanbhuiyan2021@gmail.com",
+      name: "Rayhan Bhuiyan",
       role: "Admin",
       created_at: "2026-01-01T00:00:00Z"
     },
@@ -812,7 +812,7 @@ export async function initFirestore(): Promise<void> {
         let loadedFromFirebase = false;
         const tempStore: any = {};
 
-        for (const key of keys) {
+        const promises = keys.map(async (key) => {
           try {
             const docRef = doc(firestoreDb, 'sales_portal_data', key);
             const docSnap = await withTimeout<any>(
@@ -830,7 +830,9 @@ export async function initFirestore(): Promise<void> {
           } catch (err: any) {
             console.error(`[db.ts] Firebase error loading key '${key}':`, err.message || err);
           }
-        }
+        });
+
+        await Promise.all(promises);
 
         if (loadedFromFirebase && cachedStore) {
           for (const key of keys) {

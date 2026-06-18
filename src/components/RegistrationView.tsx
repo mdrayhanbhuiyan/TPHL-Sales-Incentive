@@ -246,32 +246,67 @@ export default function RegistrationView({ authToken, userRole }: RegistrationVi
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const posRes = await fetch('/api/projects-on-sale', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      const posData = await posRes.json();
-      const loadedPos = Array.isArray(posData) ? posData : [];
-      setProjectsOnSale(loadedPos);
-
-      const dirRes = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      const dirData = await dirRes.json();
-      setDirectoryProjects(Array.isArray(dirData) ? dirData : []);
-
-      // If there are projects, preset first one selected
-      if (loadedPos.length > 0) {
-        setSelectedProjectId(loadedPos[0].id);
+      // 1. Fetch campaigns on sale
+      try {
+        const posRes = await fetch('/api/projects-on-sale', {
+          headers: { 
+            'Authorization': `Bearer ${authToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (posRes.ok) {
+          const posData = await posRes.json();
+          const loadedPos = Array.isArray(posData) ? posData : [];
+          setProjectsOnSale(loadedPos);
+          if (loadedPos.length > 0) {
+            setSelectedProjectId(loadedPos[0].id);
+          }
+        } else {
+          console.warn("[RegistrationView] Failed to fetch campaigns on sale. Status: " + posRes.status);
+        }
+      } catch (e) {
+        console.error("Error fetching projects-on-sale:", e);
       }
 
-      const regRes = await fetch('/api/unit-registrations', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      const regData = await regRes.json();
-      setUnitRegistrations(Array.isArray(regData) ? regData : []);
+      // 2. Fetch directory projects
+      try {
+        const dirRes = await fetch('/api/projects', {
+          headers: { 
+            'Authorization': `Bearer ${authToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (dirRes.ok) {
+          const dirData = await dirRes.json();
+          setDirectoryProjects(Array.isArray(dirData) ? dirData : []);
+        } else {
+          console.warn("[RegistrationView] Failed to fetch directory projects. Status: " + dirRes.status);
+        }
+      } catch (e) {
+        console.error("Error fetching directory projects:", e);
+      }
+
+      // 3. Fetch registrations
+      try {
+        const regRes = await fetch('/api/unit-registrations', {
+          headers: { 
+            'Authorization': `Bearer ${authToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (regRes.ok) {
+          const regData = await regRes.json();
+          setUnitRegistrations(Array.isArray(regData) ? regData : []);
+        } else {
+          console.warn("[RegistrationView] Failed to fetch registrations data. Status: " + regRes.status);
+          throw new Error("HTTP " + regRes.status);
+        }
+      } catch (e) {
+        console.error("Failed loading registrations data", e);
+      }
 
     } catch (e) {
-      console.error("Failed loading registrations data", e);
+      console.error("Global registrations load exception:", e);
     } finally {
       setLoading(false);
     }

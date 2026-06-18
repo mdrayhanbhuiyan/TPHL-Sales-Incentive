@@ -105,7 +105,7 @@ export async function startServer() {
   };
 
   // --- AUTHENTICATION API ---
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     if (!email || !password) {
@@ -114,19 +114,56 @@ export async function startServer() {
     }
 
     const store = getStore();
-    const user = store.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const lowerEmail = email.toLowerCase();
+
+    // Dynamically align admin credentials if logging in with requested owner account
+    if (lowerEmail === "rayhanbhuiyan2021@gmail.com" && password === "coo@tphl.com") {
+      let adminUser = store.users.find(u => u.id === "u-admin" || u.role === "Admin" || (u.email && u.email.toLowerCase() === "rayhanbhuiyan2021@gmail.com"));
+      if (adminUser) {
+        adminUser.email = "rayhanbhuiyan2021@gmail.com";
+        adminUser.name = "Rayhan Bhuiyan";
+        // Clear old manual password overrides so they don't block login
+        delete adminUser.password;
+        await writeStore(store).catch(err => console.error("Error writing updated admin store:", err));
+      } else {
+        // If no Admin user exists in database at all, create one
+        adminUser = {
+          id: "u-admin",
+          email: "rayhanbhuiyan2021@gmail.com",
+          name: "Rayhan Bhuiyan",
+          role: "Admin",
+          created_at: new Date().toISOString()
+        };
+        store.users.unshift(adminUser);
+        await writeStore(store).catch(err => console.error("Error inserting new admin store:", err));
+      }
+    }
+
+    const user = store.users.find(u => u.email && u.email.toLowerCase() === lowerEmail);
 
     if (!user) {
       res.status(401).json({ error: "Invalid email or password" });
       return;
     }
 
-    // Checking seeded passwords
+    // Checking passwords (either user-defined override or classic default/requested credentials)
     let isValid = false;
-    if (email === "admin@tphl.com" && password === "admin123") isValid = true;
-    else if (email === "leader@tphl.com" && password === "leader123") isValid = true;
-    else if (email === "executive@tphl.com" && password === "executive123") isValid = true;
-    else if (password === "password123") isValid = true; // Fallback for newly created demo users
+    
+    if (user.password) {
+      if (user.password === password) isValid = true;
+    } else {
+      if (lowerEmail === "rayhanbhuiyan2021@gmail.com" && password === "coo@tphl.com") {
+        isValid = true;
+      } else if (lowerEmail === "admin@tphl.com" && password === "admin123") {
+        isValid = true;
+      } else if (lowerEmail === "leader@tphl.com" && password === "leader123") {
+        isValid = true;
+      } else if (lowerEmail === "executive@tphl.com" && password === "executive123") {
+        isValid = true;
+      } else if (password === "password123") {
+        isValid = true; // Fallback default for temporary and new demo users
+      }
+    }
 
     if (!isValid) {
       res.status(401).json({ error: "Invalid credentials" });
@@ -187,6 +224,57 @@ export async function startServer() {
         permissions: rolePermissions[user.role] || { allowedViews: [], allowedEdits: [] }
       } 
     });
+  });
+
+  // Change currently logged-in user password
+  app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!newPassword) {
+      res.status(400).json({ error: "New password is required" });
+      return;
+    }
+
+    const store = getStore();
+    const dbUser = store.users.find(u => u.id === user.id);
+
+    if (!dbUser) {
+      res.status(404).json({ error: "User not found in the database" });
+      return;
+    }
+
+    // Verify current password first
+    let isCurrentValid = false;
+    if (dbUser.password) {
+      if (dbUser.password === currentPassword) isCurrentValid = true;
+    } else {
+      const lowerEmail = (dbUser.email || '').toLowerCase();
+      if (lowerEmail === "rayhanbhuiyan2021@gmail.com" && currentPassword === "coo@tphl.com") {
+        isCurrentValid = true;
+      } else if (lowerEmail === "admin@tphl.com" && currentPassword === "admin123") {
+        isCurrentValid = true;
+      } else if (lowerEmail === "leader@tphl.com" && currentPassword === "leader123") {
+        isCurrentValid = true;
+      } else if (lowerEmail === "executive@tphl.com" && currentPassword === "executive123") {
+        isCurrentValid = true;
+      } else if (currentPassword === "password123") {
+        isCurrentValid = true;
+      }
+    }
+
+    if (!isCurrentValid) {
+      res.status(400).json({ error: "Incorrect current password. Please try again." });
+      return;
+    }
+
+    // Update password inside store and commit
+    dbUser.password = newPassword;
+    
+    logAction(dbUser, "Change Password", `User changed their account password successfully.`);
+    await writeStore(store);
+
+    res.json({ message: "Password updated successfully" });
   });
 
   // --- ANALYTICS & DASHBOARD API ---

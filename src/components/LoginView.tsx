@@ -52,9 +52,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
   const handleSeededLogin = (role: 'admin' | 'leader' | 'exec') => {
     if (role === 'admin') {
-      setEmail("admin@tphl.com");
-      setPassword("admin123");
-      handleLogin(null as any, "admin@tphl.com", "admin123");
+      setEmail("rayhanbhuiyan2021@gmail.com");
+      setPassword("coo@tphl.com");
+      handleLogin(null as any, "rayhanbhuiyan2021@gmail.com", "coo@tphl.com");
     } else if (role === 'leader') {
       setEmail("leader@tphl.com");
       setPassword("leader123");

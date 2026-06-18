@@ -44,8 +44,8 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string | null>('u-admin');
   const [userProfile, setUserProfile] = useState<any | null>({
     id: "u-admin",
-    email: "admin@tphl.com",
-    name: "TPHL Management",
+    email: "rayhanbhuiyan2021@gmail.com",
+    name: "Rayhan Bhuiyan",
     role: "Admin"
   });
   const [checkingAuth, setCheckingAuth] = useState(false);
@@ -55,6 +55,15 @@ export default function App() {
 
   // Profile Modal state
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Password change states
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   // Layout states
   const [activeRoute, setActiveRoute] = useState<AppRoute>('dashboard');
@@ -142,6 +151,59 @@ export default function App() {
     setActiveRoute('dashboard');
     fetchUnreadNotifications(token);
     loadGlobalAccessPolicies(token);
+  };
+
+  const handlePasswordChangeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword) {
+      setPasswordError('Current password is required');
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError('New password is required');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    if (newPassword.length < 4) {
+      setPasswordError('New password must be at least 4 characters long');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update password');
+      }
+      setPasswordSuccess('Password changed successfully!');
+      // Reset input fields
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      // After 2.5 seconds, hide success message and exit changing-password view
+      setTimeout(() => {
+        setIsChangingPassword(false);
+        setPasswordSuccess('');
+      }, 2500);
+    } catch (err: any) {
+      setPasswordError(err.message || 'An error occurred.');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   const handleLogout = () => {
@@ -320,6 +382,15 @@ export default function App() {
           })}
         </nav>
 
+        {/* Desktop Sign Out Button */}
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold w-full text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition cursor-pointer border border-dashed border-rose-200/50 dark:border-rose-950/30"
+        >
+          <LogOut className="w-4 h-4 text-rose-500" />
+          <span>Sign Out / Log Out</span>
+        </button>
+
         {/* Core credits */}
         <div className="text-[10px] text-gray-400 font-mono border-t border-gray-50 pt-3">
           <span>Enterprise System v2.0</span>
@@ -330,7 +401,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* UPPER NAVIGATION BAR RAIL */}
-        <header className={`h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 transition-colors duration-200 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-100 text-gray-800'}`}>
+        <header className={`h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300 shadow-xs dark:shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-800 text-white shadow-slate-950/45' : 'bg-white border-gray-100 text-gray-800 shadow-gray-100/50'}`}>
           <div className="flex items-center gap-3">
             {/* Mobile menu trigger */}
             <button
@@ -395,29 +466,42 @@ export default function App() {
 
       {/* 3. RESPONSIVE SLIDE-OUT DRAWER FOR TABLET OR MOBILE PANELS */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden bg-gray-900/40 backdrop-blur-xs flex">
-          <div className="w-72 bg-white flex flex-col p-6 space-y-6 animate-slide-in h-full shadow-2xl relative border-r border-gray-100">
+        <div 
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 z-50 lg:hidden bg-slate-950/40 dark:bg-slate-950/60 backdrop-blur-xs flex cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-72 bg-white dark:bg-slate-900 flex flex-col p-6 space-y-6 animate-slide-in h-full shadow-2xl relative border-r border-gray-100 dark:border-slate-800 cursor-default"
+          >
             <button
               onClick={() => setIsMobileMenuOpen(false)}
-              className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-950 transition cursor-pointer"
+              className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl text-gray-400 dark:text-slate-500 hover:text-gray-950 dark:hover:text-white transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2.5 border-b border-gray-50 pb-4">
-              <Building2 className="w-6 h-6 text-indigo-600" />
+            <div className="flex items-center gap-2.5 border-b border-gray-50 dark:border-slate-800 pb-4">
+              <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               <div>
-                <h1 className="font-bold text-gray-950 text-xs leading-none">TPHL Incentive</h1>
-                <span className="text-[9px] text-gray-400 font-mono tracking-wider lowercase">v2.0 dashboard</span>
+                <h1 className="font-bold text-gray-950 dark:text-white text-xs leading-none">TPHL Incentive</h1>
+                <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono tracking-wider lowercase">v2.0 dashboard</span>
               </div>
             </div>
 
             {/* Profile capsule */}
-            <div className="bg-gray-100/50 rounded-2xl p-3 flex items-center justify-between">
-              <div className="space-y-0.5 truncate">
-                <p className="font-bold text-gray-900 text-xs truncate leading-normal">{userProfile.name}</p>
+            <div 
+              onClick={() => {
+                setIsProfileModalOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="bg-gray-100/50 dark:bg-slate-800/40 rounded-2xl p-3 flex items-center justify-between cursor-pointer hover:bg-gray-200/50 dark:hover:bg-slate-800/70 border border-transparent dark:border-slate-800 transition group"
+              title="Click to view profile details"
+            >
+              <div className="space-y-0.5 truncate flex-1">
+                <p className="font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition text-xs truncate leading-normal">{userProfile.name}</p>
                 <div className="flex items-center gap-1">
-                  <span className="text-[8px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 font-bold uppercase px-1 rounded-full font-mono">
+                  <span className="text-[8px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-400 font-bold uppercase px-1 rounded-full font-mono">
                     {userProfile.role}
                   </span>
                 </div>
@@ -434,10 +518,10 @@ export default function App() {
                       setActiveRoute(item.id as AppRoute);
                       setIsMobileMenuOpen(false);
                     }}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold w-full transition duration-150 text-left ${
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold w-full transition duration-150 text-left cursor-pointer ${
                       isSelected 
-                        ? 'bg-blue-600 text-white' 
-                        : 'text-gray-500 hover:text-gray-950 hover:bg-gray-100/50'
+                        ? 'bg-blue-600 text-white shadow-xs' 
+                        : 'text-gray-500 dark:text-slate-400 hover:text-gray-950 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-slate-800/40'
                     }`}
                   >
                     <span>{getRouteLabelAndEmoji(item.id as AppRoute)}</span>
@@ -445,66 +529,190 @@ export default function App() {
                 );
               })}
             </nav>
+
+            {/* Mobile drawer Sign Out */}
+            <div className="border-t border-gray-100 dark:border-slate-800 pt-4">
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold w-full text-rose-600 dark:text-rose-450 bg-rose-50 dark:bg-rose-955/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition cursor-pointer"
+              >
+                <LogOut className="w-4 h-4 text-rose-500 dark:text-rose-450" />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 4. ADMIN PROFILE MODAL */}
+      {/* 4. ADMIN & USER PROFILE MODAL */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 dark:bg-slate-955/65 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 p-6 max-w-sm w-full space-y-6 relative shadow-2xl rounded-3xl animate-fade-in text-gray-850 dark:text-slate-100">
             <button
-              onClick={() => setIsProfileModalOpen(false)}
+              onClick={() => {
+                setIsProfileModalOpen(false);
+                setIsChangingPassword(false);
+                setPasswordError('');
+                setPasswordSuccess('');
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+              }}
               className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl text-gray-400 dark:text-slate-550 hover:text-gray-950 dark:hover:text-white transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex flex-col items-center text-center space-y-3 pt-2">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold font-mono shadow-md">
-                {userProfile.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
-              <div className="space-y-0.5">
-                <h3 className="font-bold text-gray-900 dark:text-white text-base">
-                  {userProfile.name}
-                </h3>
-                <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-500/10 dark:bg-indigo-400/10 text-indigo-700 dark:text-indigo-400 font-bold uppercase px-2.5 py-0.5 rounded-full font-mono">
-                  {userProfile.role}
-                </span>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100 dark:border-slate-800 pt-4 space-y-3.5 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Account Node ID</span>
-                <span className="font-mono bg-gray-100 dark:bg-slate-800 text-[10px] font-bold px-2 py-0.5 rounded text-gray-700 dark:text-slate-300">{userProfile.id}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">E-mail address</span>
-                <span className="font-semibold text-gray-800 dark:text-slate-100">{userProfile.email}</span>
-              </div>
-              {userProfile.employee_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Employee ID</span>
-                  <span className="font-mono font-bold text-gray-700 dark:text-slate-300">{userProfile.employee_id}</span>
+            {isChangingPassword ? (
+              <form onSubmit={handlePasswordChangeSubmit} className="space-y-4 pt-1">
+                <div className="text-center">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-base">Change Password</h3>
+                  <p className="text-[11px] text-gray-400 dark:text-slate-400">Update your account credentials below</p>
                 </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">DB Access</span>
-                <span className="bg-emerald-50 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30 text-[10px] font-bold px-2 py-0.5 rounded">All Write-Read</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Authorization level</span>
-                <span className="bg-blue-50 dark:bg-blue-950/25 text-blue-800 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 text-[10px] font-bold px-2 py-0.5 rounded font-mono">Master</span>
-              </div>
-            </div>
 
-            <button
-              onClick={() => setIsProfileModalOpen(false)}
-              className="w-full text-center bg-gray-900 hover:bg-gray-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
-            >
-              Close Profile Details
-            </button>
+                <div className="space-y-3 text-xs">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Current Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 bg-transparent outline-hidden border-gray-250 dark:border-slate-800 text-gray-850 dark:text-slate-100 placeholder-gray-300 dark:placeholder-slate-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">New Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 bg-transparent outline-hidden border-gray-250 dark:border-slate-800 text-gray-850 dark:text-slate-100 placeholder-gray-300 dark:placeholder-slate-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Confirm New Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full border rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 bg-transparent outline-hidden border-gray-250 dark:border-slate-800 text-gray-850 dark:text-slate-100 placeholder-gray-300 dark:placeholder-slate-600"
+                    />
+                  </div>
+                </div>
+
+                {passwordError && (
+                  <div className="text-[11px] bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 px-3 py-2 rounded-xl text-center font-semibold leading-normal">
+                    ⚠️ {passwordError}
+                  </div>
+                )}
+
+                {passwordSuccess && (
+                  <div className="text-[11px] bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-xl text-center font-semibold leading-normal">
+                    ✅ {passwordSuccess}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChangingPassword(false);
+                      setPasswordError('');
+                      setPasswordSuccess('');
+                      setCurrentPassword('');
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                    className="w-1/2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingPassword}
+                    className="w-1/2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer text-center"
+                  >
+                    {isSavingPassword ? 'Saving...' : 'Update'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="flex flex-col items-center text-center space-y-3 pt-2">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold font-mono shadow-md">
+                    {userProfile.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="space-y-0.5">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-base">
+                      {userProfile.name}
+                    </h3>
+                    <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-500/10 dark:bg-indigo-400/10 text-indigo-700 dark:text-indigo-400 font-bold uppercase px-2.5 py-0.5 rounded-full font-mono">
+                      {userProfile.role}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 dark:border-slate-800 pt-4 space-y-3.5 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Account ID</span>
+                    <span className="font-mono bg-gray-100 dark:bg-slate-800 text-[10px] font-bold px-2 py-0.5 rounded text-gray-700 dark:text-slate-300">{userProfile.id}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">E-mail address</span>
+                    <span className="font-semibold text-gray-800 dark:text-slate-100 truncate max-w-[185px]">{userProfile.email}</span>
+                  </div>
+                  {userProfile.employee_id && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Employee ID</span>
+                      <span className="font-mono font-bold text-gray-700 dark:text-slate-300">{userProfile.employee_id}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider text-[9px]">DB Access</span>
+                    <span className="bg-emerald-50 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30 text-[10px] font-bold px-2 py-0.5 rounded">All Write-Read</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2 border-t border-gray-100/60 dark:border-slate-800/60">
+                  <button
+                    onClick={() => {
+                      setIsChangingPassword(true);
+                      setPasswordError('');
+                      setPasswordSuccess('');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:hover:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  >
+                    🔒 Change Password
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/20 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-450 py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-550" /> Sign Out
+                  </button>
+                  <button
+                    onClick={() => setIsProfileModalOpen(false)}
+                    className="w-full text-center bg-gray-905 hover:bg-gray-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white py-2.5 rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+                  >
+                    Close Profile Details
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

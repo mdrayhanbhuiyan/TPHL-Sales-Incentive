@@ -928,23 +928,29 @@ export default function IncentivesView({ authToken, userRole }: IncentivesProps)
         <div className="flex items-center justify-end gap-2 text-xs flex-wrap">
           <button
             onClick={triggerPrintPDF}
-            className="flex items-center gap-1 px-3 py-2 bg-gray-50 border border-gray-100 hover:bg-gray-100 text-gray-600 font-semibold rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-150 dark:border-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/35 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl shadow-2xs hover:shadow-xs transition duration-200 cursor-pointer"
+            title="Launch print dialog formatted professionally as audit-ready ledger reports"
           >
-            <Printer className="w-4 h-4 text-gray-400" /> Print / PDF
+            <Printer className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+            <span>Print Report</span>
           </button>
           
           <button
             onClick={triggerExcelExport}
-            className="flex items-center gap-1 px-3 py-2 bg-gray-50 border border-gray-100 hover:bg-gray-100 text-gray-600 font-semibold rounded-xl transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-50 dark:bg-slate-800/40 border border-gray-150 dark:border-slate-700/50 hover:bg-gray-100 dark:hover:bg-slate-850 text-gray-700 dark:text-slate-350 font-bold rounded-xl transition duration-200 cursor-pointer"
+            title="Export filtered database metrics to clean Offline CSV"
           >
-            <FileSpreadsheet className="w-4 h-4 text-gray-400" /> Export Excel
+            <FileSpreadsheet className="w-4 h-4 text-gray-500" />
+            <span>Export Excel</span>
           </button>
 
           <button
             onClick={triggerSalesCSVExport}
-            className="flex items-center gap-1 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl shadow-xs transition cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-800 text-white font-bold rounded-xl shadow-xs transition duration-200 cursor-pointer"
+            title="Download full database audit table log as CSV spreadsheet"
           >
-            <Download className="w-4 h-4 text-emerald-100" /> Download CSV
+            <Download className="w-4 h-4 text-emerald-100" />
+            <span>Download CSV</span>
           </button>
         </div>
       </div>

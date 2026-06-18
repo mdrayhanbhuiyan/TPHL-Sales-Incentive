@@ -13,6 +13,7 @@ export interface User {
   employee_id?: string; // Links to SalesExecutive if role is Sales Executive
   team_id?: string;      // Links to SalesTeam if leader/executive
   created_at: string;
+  password?: string;
 }
 
 export interface Project {

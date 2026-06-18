@@ -321,7 +321,7 @@ CREATE TABLE SalesIncentives (
               <p className="text-xs text-gray-500">Authenticate user credentials and returns custom session/JWT token parameters.</p>
               <div className="bg-gray-950 p-3 rounded-xl text-xs font-mono text-gray-300">
                 <div>{"Body Request:"}</div>
-                <div className="text-blue-400">{`{ "email": "admin@tphl.com", "password": "admin123" }`}</div>
+                <div className="text-blue-400">{`{ "email": "rayhanbhuiyan2021@gmail.com", "password": "coo@tphl.com" }`}</div>
               </div>
             </div>
 
