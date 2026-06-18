@@ -7,9 +7,14 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { startServer } = require('../dist/server.cjs');
 
-// Statically import the JSON store and the compiled bundle to ensure Vercel's NFT (Node File Trace)
-// bundles them directly in the deployed lambda function.
-import '../db-store.json';
+// Statically refer to the JSON store and the compiled bundle to ensure Vercel's NFT (Node File Trace)
+// bundles them directly in the deployed lambda function. We use CommonJS require to avoid Node's ES module
+// import attribute requirement error (ERR_IMPORT_ATTRIBUTE_MISSING).
+try {
+  require('../db-store.json');
+} catch (e) {
+  // It's fine if this throws at trace time, Vercel will still discover the file
+}
 import '../dist/server.cjs';
 
 let cachedApp: any = null;
