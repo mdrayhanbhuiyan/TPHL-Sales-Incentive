@@ -15,6 +15,11 @@ try {
 } catch (e) {
   // It's fine if this throws at trace time, Vercel will still discover the file
 }
+try {
+  require('../firebase-applet-config.json');
+} catch (e) {
+  // It's fine if this throws at trace time, Vercel will still discover the file
+}
 import '../dist/server.cjs';
 
 let cachedApp: any = null;

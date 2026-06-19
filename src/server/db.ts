@@ -171,21 +171,54 @@ let activeWritePromises: Promise<any>[] = [];
 
 // Initialize Firebase Firestore client safely with config
 try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (configData && configData.apiKey && configData.projectId) {
-      const fbApp = getApps().length === 0 ? initializeApp(configData) : getApp();
-      const dbName = configData.firestoreDatabaseId || "(default)";
-      firestoreDb = initializeFirestore(fbApp, {
-        experimentalForceLongPolling: true
-      }, dbName);
-      console.log("[db.ts] Firebase client in db.ts initialized server-side successfully with project ID: " + configData.projectId + " and database Name: " + dbName);
-    } else {
-      console.log("[db.ts] Empty or incomplete firebase-applet-config.json found.");
+  let configData: any = null;
+  let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  
+  // Try locating firebase-applet-config.json in multiple directories for Vercel environments
+  if (!fs.existsSync(configPath)) {
+    const fallbackPath1 = path.join(__dirname, '..', 'firebase-applet-config.json');
+    const fallbackPath2 = path.join(__dirname, '../../firebase-applet-config.json');
+    if (fs.existsSync(fallbackPath1)) {
+      configPath = fallbackPath1;
+    } else if (fs.existsSync(fallbackPath2)) {
+      configPath = fallbackPath2;
     }
+  }
+
+  if (fs.existsSync(configPath)) {
+    try {
+      configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      console.log("[db.ts] Loaded Firebase configuration from:", configPath);
+    } catch (e: any) {
+      console.error("[db.ts] Failed to parse firebase-applet-config.json:", e.message);
+    }
+  }
+
+  // Support Vercel Environment Variables as overrides/fallbacks
+  const envProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
+  const envApiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+  if (envProjectId && envApiKey) {
+    console.log("[db.ts] Preferring/falling back to Firebase configuration from Environment Variables.");
+    configData = {
+      projectId: envProjectId,
+      apiKey: envApiKey,
+      appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || configData?.appId || "",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || configData?.authDomain || `${envProjectId}.firebaseapp.com`,
+      firestoreDatabaseId: process.env.FIREBASE_DATABASE_ID || process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || configData?.firestoreDatabaseId || "(default)",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || configData?.storageBucket || `${envProjectId}.firebasestorage.app`,
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || configData?.messagingSenderId || ""
+    };
+  }
+
+  if (configData && configData.apiKey && configData.projectId) {
+    const fbApp = getApps().length === 0 ? initializeApp(configData) : getApp();
+    const dbName = configData.firestoreDatabaseId || "(default)";
+    firestoreDb = initializeFirestore(fbApp, {
+      experimentalForceLongPolling: true
+    }, dbName);
+    console.log("[db.ts] Firebase client in db.ts initialized server-side successfully with project ID: " + configData.projectId + " and database Name: " + dbName);
   } else {
-    console.log("[db.ts] No firebase-applet-config.json file detected at root.");
+    console.log("[db.ts] No valid Firebase configurations (neither firebase-applet-config.json nor Environment Variables) detected.");
   }
 } catch (err: any) {
   console.log("[db.ts] Safe notice: Firebase could not be initialized server-side: " + (err.message || err));
