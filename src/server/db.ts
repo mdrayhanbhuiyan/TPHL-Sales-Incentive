@@ -1040,34 +1040,19 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
       cachedStore = loadStoreFromCSV();
     }
 
-    // 1. Calculate local deployment hash of the preloaded deployment bundle Setup keys
-    const setupKeyData = {
-      users: cachedStore.users,
-      projects: cachedStore.projects,
-      salesTeams: cachedStore.salesTeams,
-      teamProjects: cachedStore.teamProjects,
-      salesExecutives: cachedStore.salesExecutives,
-      incentiveRules: cachedStore.incentiveRules,
-      bonusRules: cachedStore.bonusRules,
-      projectsOnSale: cachedStore.projectsOnSale,
-      unitRegistrations: cachedStore.unitRegistrations,
-      rolePermissions: cachedStore.rolePermissions
-    };
-    const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
-
-    // 2. Hash Mismatch: New Vercel Deployment with code updates or updated CSV setup has run!
-    if (metadataFetchSuccessful && currentLocalHash !== storedHash) {
-      console.log(`[db.ts] New deployment detected (local: ${currentLocalHash}, remote: ${storedHash}). Overwriting Firebase database state with Vercel preloaded/updated files...`);
+    // 1. If metadata snapshot didn't exist or has never been initialized/written to, seed the database
+    if (metadataFetchSuccessful && lastRemoteUpdate === 0) {
+      console.log("[db.ts] Brand new Firestore database detected. Seeding Firestore with local preloaded dataset...");
       
       // Seed/Recalculate everything to prepare fresh dataset
       recalculateAllIncentivesDirect(cachedStore);
       
-      // Save it directly to Firestore
+      // Save it directly to Firestore (which will also write the initial metadata with lastUpdatedAt = current timestamp)
       await saveStoreToFirestore(cachedStore);
     } else {
-      // 3. Hashes match or metadata fetch failed: Operational mode. If the remote was modified by transactions, pull them!
-      if (lastRemoteUpdate > lastLocalSyncTime) {
-        console.log(`[db.ts] In-memory cache is cold (local: ${lastLocalSyncTime}, remote: ${lastRemoteUpdate}). Pulling latest active transactions from Firebase Firestore...`);
+      // 2. Operational Mode: Fetch state from Firestore on fresh boot (lastLocalSyncTime === 0) or when remote is newer than local cache
+      if (lastLocalSyncTime === 0 || lastRemoteUpdate > lastLocalSyncTime) {
+        console.log(`[db.ts] Pulling latest operational dataset from Firebase Firestore (local: ${lastLocalSyncTime}, remote: ${lastRemoteUpdate})...`);
         await pullFromFirestore();
         lastLocalSyncTime = lastRemoteUpdate;
       } else {
