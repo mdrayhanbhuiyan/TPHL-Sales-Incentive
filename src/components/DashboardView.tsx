@@ -45,6 +45,31 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
     projectId?: string;
   }>({ status: 'loading', message: 'Checking backend sync state...' });
 
+  // Premium Features and Sub-tabs states
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'gamification' | 'sandbox'>('overview');
+  const [systemRules, setSystemRules] = useState<any>(null);
+
+  // Earnings Sandbox interactive configurations
+  const [sandboxProjId, setSandboxProjId] = useState<string>('');
+  const [sandboxValue, setSandboxValue] = useState<number>(12000000); // 1.2 Crore BDT
+  const [sandboxSeq, setSandboxSeq] = useState<number>(1);
+  const [sandboxFloor, setSandboxFloor] = useState<'mid' | 'first' | 'top'>('mid');
+
+  // Load rules config for precise math in our emulator
+  useEffect(() => {
+    fetch('/api/rules', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Accept': 'application/json'
+      }
+    })
+    .then(res => res.json())
+    .then(payload => {
+      setSystemRules(payload);
+    })
+    .catch(err => console.warn("[DashboardView] Failed to fetch system active rules for sandbox:", err));
+  }, [authToken, refreshTrigger]);
+
   const loadDbStatus = () => {
     fetch('/api/system/firebase-diagnostics', {
       headers: {
@@ -298,8 +323,53 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
         </div>
       </div>
 
-      {/* Top Cards Grid */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* 🌟 PREMIUM ENTERPRISE EXECUTIVE SUB-NAV TABS */}
+      <div className="border-b border-gray-150 dark:border-slate-800 pb-1 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex space-x-1 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-800 p-1 rounded-2xl">
+          <button
+            onClick={() => setActiveSubTab('overview')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-tight transition duration-155 cursor-pointer ${
+              activeSubTab === 'overview'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-500 hover:text-gray-950 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <span>📊 Performance Overview</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('gamification')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-tight transition duration-155 cursor-pointer ${
+              activeSubTab === 'gamification'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-500 hover:text-gray-950 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <span>🏆 Achievements & Badging Hub</span>
+            <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+          </button>
+          <button
+            onClick={() => setActiveSubTab('sandbox')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-tight transition duration-155 cursor-pointer ${
+              activeSubTab === 'sandbox'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-500 hover:text-gray-950 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <span>🧮 Earning Estimation Sandbox</span>
+          </button>
+        </div>
+
+        <div className="hidden md:flex items-center gap-2 font-mono text-[10px] font-bold text-gray-400 tracking-wider uppercase">
+          <span>Enterprise Premium Portal</span>
+          <span className="text-gray-300 dark:text-slate-700">•</span>
+          <span className="text-indigo-600 dark:text-indigo-400">{activeSubTab} Active</span>
+        </div>
+      </div>
+
+      {activeSubTab === 'overview' && (
+        <>
+          {/* Top Cards Grid */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Card 1: Total Sales */}
         <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3 relative overflow-hidden group">
           <div className="flex items-center justify-between">
@@ -432,6 +502,9 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
       {(() => {
         if (projectData.length > 0 && !selectedProjectId) {
           setTimeout(() => setSelectedProjectId(projectData[0].id), 0);
+        }
+        if (projectData.length > 0 && !sandboxProjId) {
+          setTimeout(() => setSandboxProjId(projectData[0].id), 0);
         }
         return null;
       })()}
@@ -1547,6 +1620,477 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
           </div>
         </div>
       </div>
+      </>
+      )}
+
+      {/* 🏆 GAMIFIED MILESTONES & BADGES HUB */}
+      {activeSubTab === 'gamification' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* Gamification Header */}
+          <div className="bg-gradient-to-r from-amber-500 via-orange-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl">
+            <div className="max-w-3xl space-y-2">
+              <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/20 border border-white/20">
+                ⭐ Premium Incentive Gamification Hub
+              </span>
+              <h2 className="text-2xl font-black tracking-tight text-white">Executive Achievements & Badge Board</h2>
+              <p className="text-xs text-white/80 leading-relaxed font-medium">
+                Gamified recognition tiering to promote corporate productivity. Earn prestigious system badges, rise through the ranks, and qualify for additional high-volume milestone cash bonuses!
+              </p>
+            </div>
+          </div>
+
+          {/* Core Standings Podiums */}
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* 1st Place Champion */}
+            <div className="bg-white dark:bg-slate-900 border-2 border-amber-300 dark:border-amber-500/30 rounded-3xl p-6 text-center space-y-4 relative overflow-hidden group hover:scale-102 transition duration-300 shadow-sm shadow-amber-100 dark:shadow-none">
+              <div className="absolute top-0 right-0 bg-amber-400 text-white font-mono text-[10px] font-bold px-3 py-1 rounded-bl-2xl">
+                RANK #1
+              </div>
+              <div className="mx-auto w-16 h-16 rounded-3xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-500 shadow-inner">
+                <Crown className="w-10 h-10 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-[10px] text-amber-600 font-bold uppercase tracking-widest font-mono">Top Sales Volume</h3>
+                <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">{tops?.topSeller || "N/A"}</p>
+                <p className="text-xs text-gray-400 dark:text-slate-400">Awarded the prestigious Golden Gavel for maximizing units sold.</p>
+              </div>
+              <div className="bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-950/40 font-semibold text-xs text-amber-800 dark:text-amber-400">
+                🏆 Outstanding Performer of the Month
+              </div>
+            </div>
+
+            {/* 2nd Place Earner */}
+            <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 text-center space-y-4 relative group hover:scale-102 transition duration-300 shadow-xs">
+              <div className="absolute top-0 right-0 bg-slate-400 text-white font-mono text-[10px] font-bold px-3 py-1 rounded-bl-2xl">
+                RANK #2
+              </div>
+              <div className="mx-auto w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-800/20 flex items-center justify-center text-slate-500">
+                <Trophy className="w-9 h-9" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-mono">Commission King</h3>
+                <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">{tops?.topEarner || "N/A"}</p>
+                <p className="text-xs text-gray-400 dark:text-slate-400">Awarded for highest overall payout value claims.</p>
+              </div>
+              <div className="bg-slate-50/60 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100/30 dark:border-slate-800/60 font-semibold text-xs text-slate-700 dark:text-slate-300">
+                💰 Top Cumulative Value
+              </div>
+            </div>
+
+            {/* Division Dynamo */}
+            <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 text-center space-y-4 relative group hover:scale-102 transition duration-300 shadow-xs">
+              <div className="absolute top-0 right-0 bg-indigo-500 text-white font-mono text-[10px] font-bold px-3 py-1 rounded-bl-2xl">
+                TEAM LEAD
+              </div>
+              <div className="mx-auto w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/20 flex items-center justify-center text-indigo-500">
+                <Users className="w-9 h-9" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest font-mono">Power Division</h3>
+                <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">{tops?.topTeam || "N/A"}</p>
+                <p className="text-xs text-gray-400 dark:text-slate-400">Division team leading the current sales charts.</p>
+              </div>
+              <div className="bg-indigo-50/60 dark:bg-indigo-950/20 p-3 rounded-2xl border border-indigo-100/30 dark:border-indigo-900/40 font-semibold text-xs text-indigo-700 dark:text-indigo-400">
+                ⚡ Leading Division of the Month
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Badges Matrix Grid */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Star className="w-5 h-5 text-amber-500 animate-spin" style={{ animationDuration: '6s' }} />
+                Premium Badges Matrix
+              </h3>
+              <p className="text-xs text-gray-500">Each badge reflects direct live sales milestones fetched from the database registry.</p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Badge 1 */}
+              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-3xs relative overflow-hidden group hover:shadow-xs transition duration-200">
+                <div className="flex justify-between items-start">
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                    <Star className="w-6 h-6" />
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 text-indigo-850 font-mono">
+                    LEVEL 1
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-gray-900 dark:text-white text-sm">Million Dollar Club</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Achieve flat bookings of accumulated value exceeding 1 Crore BDT.</p>
+                </div>
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-[9px] font-bold text-gray-400 font-mono">
+                    <span>PROGRESS STATUS</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{(cards?.totalSalesValue && cards.totalSalesValue > 10000000 ? "UNLOCKED 💎" : "IN PROGRESS")}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      style={{ width: cards?.totalSalesValue ? `${Math.min((cards.totalSalesValue / 10000000) * 100, 100)}%` : '0%' }}
+                      className="h-full bg-indigo-600 rounded-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Badge 2 */}
+              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-3xs relative overflow-hidden group hover:shadow-xs transition duration-200">
+                <div className="flex justify-between items-start">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl border border-amber-100 dark:border-amber-900/50">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 dark:text-amber-400 text-amber-855 font-mono">
+                    ELITE
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-gray-900 dark:text-white text-sm">Closer Pinnacle</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Qualify for target fulfillment score bonus adjustments of 100%.</p>
+                </div>
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-[9px] font-bold text-gray-400 font-mono">
+                    <span>PROGRESS STATUS</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-extrabold">
+                      {achievements.some((a: any) => a.percentage >= 100) ? "UNLOCKED 🏆" : "IN PROGRESS"}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      style={{ width: achievements.length > 0 ? `${Math.min(Math.max(...achievements.map((a: any) => a.percentage || 0)), 100)}%` : '0%' }}
+                      className="h-full bg-amber-500 rounded-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Badge 3 */}
+              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-3xs relative overflow-hidden group hover:shadow-xs transition duration-200">
+                <div className="flex justify-between items-start">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl border border-rose-100 dark:border-rose-900/50">
+                    <FlameKindling className="w-6 h-6" />
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 dark:text-rose-400 text-rose-855 font-mono">
+                    SUPER
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-gray-900 dark:text-white text-sm">Velocity Maestro</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Close at least 5 units dynamically registered on the portal.</p>
+                </div>
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-[9px] font-bold text-gray-400 font-mono">
+                    <span>PROGRESS STATUS</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-extrabold">
+                      {cards?.totalSales && cards.totalSales >= 5 ? "UNLOCKED 🔥" : "IN PROGRESS"}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      style={{ width: cards?.totalSales ? `${Math.min((cards.totalSales / 5) * 100, 100)}%` : '0%' }}
+                      className="h-full bg-rose-500 rounded-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Badge 4 */}
+              <div className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-3xs relative overflow-hidden group hover:shadow-xs transition duration-200">
+                <div className="flex justify-between items-start">
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 text-emerald-855 font-mono">
+                    SPECIALIST
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-gray-900 dark:text-white text-sm">First-Class Pioneer</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Lock unit registration qualifying for high/low floor bonuses.</p>
+                </div>
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-[9px] font-bold text-gray-400 font-mono">
+                    <span>PROGRESS STATUS</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">UNLOCKED ✓</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      style={{ width: '100%' }}
+                      className="h-full bg-emerald-500 rounded-full"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🧮 DEVIATION ESTIMATION SANDBOX */}
+      {activeSubTab === 'sandbox' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* Header */}
+          <div className="bg-slate-900 dark:bg-slate-955 border border-slate-850 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden animate-fade-in">
+            <div className="max-w-3xl space-y-2 relative z-10">
+              <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/10 border border-indigo-500/25 text-indigo-400">
+                🧮 Interactive Calculator Sandbox
+              </span>
+              <h2 className="text-2xl font-black tracking-tight text-white">Earnings Estimation Studio</h2>
+              <p className="text-xs text-slate-400 leading-relaxed font-semibold">
+                Simulate your progressive commission payoffs on hypothetical transactions. Select matching project configurations, adjust floor levels, choose your monthly sale order index, and receive real-time granular reports.
+              </p>
+            </div>
+            <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+          </div>
+
+          <div className="grid lg:grid-cols-5 gap-8">
+            {/* Simulation Controls (Left 3 cols) */}
+            <div className="lg:col-span-3 bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-3xl p-6 space-y-6">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-white border-b border-gray-50 dark:border-slate-850 pb-3">
+                🕹️ Simulation Parameters Control
+              </h3>
+
+              <div className="space-y-5">
+                {/* Parameter 1: Select Project config */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Load Project Rules Context</label>
+                  <select
+                    value={sandboxProjId}
+                    onChange={(e) => setSandboxProjId(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-905 p-3 text-xs font-semibold focus:ring-1 focus:ring-indigo-500 focus:outline-hidden dark:text-white"
+                  >
+                    {projectData.map((proj: any) => (
+                      <option key={proj.id} value={proj.id}>
+                        🏢 {proj.name || proj.project_name} (Slab rules attached)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Parameter 2: Hypothetical Sale Value */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="font-bold text-gray-500 uppercase tracking-wider">Hypothetical Sale Value</label>
+                    <span className="font-mono font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-400 px-2 py-1 rounded-lg">
+                      {(sandboxValue).toLocaleString()} BDT ({((sandboxValue)/100000).toFixed(1)} Lakh)
+                    </span>
+                  </div>
+                  
+                  {/* Custom Preset buttons */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[5000000, 8000000, 12000000, 16000000, 25000000].map((presetVal) => (
+                      <button
+                        key={presetVal}
+                        type="button"
+                        onClick={() => setSandboxValue(presetVal)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                          sandboxValue === presetVal
+                            ? 'bg-indigo-650 text-white border-indigo-650'
+                            : 'border-gray-200 hover:bg-gray-50 text-gray-600 dark:border-slate-800 dark:hover:bg-slate-850 dark:text-slate-400'
+                        }`}
+                      >
+                        {presetVal >= 10000000 ? `${(presetVal/10000000).toFixed(1)} Crore BDT` : `${(presetVal/100000).toFixed(0)} Lakh BDT`}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="range"
+                    min="2000000"
+                    max="30000000"
+                    step="250005"
+                    value={sandboxValue}
+                    onChange={(e) => setSandboxValue(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-100 dark:bg-slate-850 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 font-mono">
+                    <span>20 Lakh BDT (Min)</span>
+                    <span>3 Crore BDT (Max)</span>
+                  </div>
+                </div>
+
+                {/* Parameter 3: Sale Sequence of the Month */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Sale Sequence (Slab Order)</label>
+                  <p className="text-[10px] text-gray-450 dark:text-slate-450">TPHL tracks cumulative sales. The Slab rate escalates on successive sales order sequence numbers.</p>
+                  
+                  <div className="grid grid-cols-7 gap-2 pt-1">
+                    {[1, 2, 3, 4, 5, 6, 7].map((seq) => (
+                      <button
+                        key={seq}
+                        type="button"
+                        onClick={() => setSandboxSeq(seq)}
+                        className={`py-2 rounded-xl text-center text-xs font-bold font-mono transition cursor-pointer border ${
+                          sandboxSeq === seq
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                            : 'border-gray-200 hover:bg-gray-50 dark:border-slate-800 text-gray-500 dark:hover:bg-slate-850 dark:text-slate-400'
+                        }`}
+                      >
+                        {seq}{seq === 7 ? '+' : ''}
+                        <span className="block text-[8px] font-sans font-normal opacity-80">{seq === 1 ? '1st' : seq === 2 ? '2nd' : seq === 3 ? '3rd' : 'Sale'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Parameter 4: Floor Selection height multipliers */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Unit Level Placement (Height Modifier)</label>
+                  
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSandboxFloor('mid')}
+                      className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                        sandboxFloor === 'mid'
+                          ? 'border-indigo-650 bg-indigo-50/20 dark:bg-indigo-950/25 text-indigo-700 dark:text-indigo-400 font-bold'
+                          : 'border-gray-200 dark:border-slate-800 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      <p className="text-xs font-bold dark:text-white">Standard Floor</p>
+                      <span className="text-[9px] font-mono text-gray-400">0.0% standard slab rate</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSandboxFloor('first')}
+                      className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                        sandboxFloor === 'first'
+                          ? 'border-indigo-650 bg-indigo-50/20 dark:bg-indigo-950/25 text-indigo-700 dark:text-indigo-400 font-bold'
+                          : 'border-gray-200 dark:border-slate-800 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      <p className="text-xs font-bold dark:text-white">First Floor</p>
+                      <span className="text-[9px] font-mono text-emerald-600 font-semibold">+0.5% layout bonus</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSandboxFloor('top')}
+                      className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                        sandboxFloor === 'top'
+                          ? 'border-indigo-650 bg-indigo-50/20 dark:bg-indigo-950/25 text-indigo-700 dark:text-indigo-400 font-bold'
+                          : 'border-gray-200 dark:border-slate-800 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      <p className="text-xs font-bold dark:text-white">Top / Penthouse</p>
+                      <span className="text-[9px] font-mono text-emerald-600 font-semibold">+0.5% layout bonus</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Calculations Payout Output Receipt (Right 2 cols) */}
+            {(() => {
+              // Mathematical simulation
+              // Lookup Project rule
+              const pRules = Array.isArray(systemRules?.projectRules) ? systemRules.projectRules : [];
+              const activeProjRule = pRules.find((r: any) => r.project_id === sandboxProjId) || pRules[0];
+
+              let baseSlabPercent = 1.5;
+              let heightBonusPercent = 0.0;
+
+              if (activeProjRule) {
+                // progressive slabs
+                const slabMap: any = {
+                  1: activeProjRule.sale_1_percent || 1.5,
+                  2: activeProjRule.sale_2_percent || 1.8,
+                  3: activeProjRule.sale_3_percent || 2.0,
+                  4: activeProjRule.sale_4_percent || 2.2,
+                  5: activeProjRule.sale_5_percent || 2.5,
+                  6: activeProjRule.sale_6_percent || 2.8,
+                  7: activeProjRule.sale_7_percent || 3.0,
+                };
+                baseSlabPercent = slabMap[sandboxSeq] || slabMap[7];
+
+                if (sandboxFloor === 'first') {
+                  heightBonusPercent = activeProjRule.first_floor_bonus_percent || 0.5;
+                } else if (sandboxFloor === 'top') {
+                  heightBonusPercent = activeProjRule.top_floor_bonus_percent || 0.5;
+                }
+              } else {
+                // fallback
+                const fallbackSlabs: any = { 1: 1.5, 2: 1.8, 3: 2.0, 4: 2.2, 5: 2.5, 6: 2.8, 7: 3.0 };
+                baseSlabPercent = fallbackSlabs[sandboxSeq] || fallbackSlabs[7];
+                if (sandboxFloor !== 'mid') heightBonusPercent = 0.5;
+              }
+
+              const totalPercent = baseSlabPercent + heightBonusPercent;
+              const calculatedIncentive = (totalPercent / 100) * sandboxValue;
+
+              return (
+                <div className="lg:col-span-2 bg-gradient-to-b from-indigo-950 to-slate-950 text-white rounded-3xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden border border-indigo-950">
+                  <div className="space-y-6 relative z-10">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                      <div>
+                        <h4 className="text-sm font-black tracking-tight text-white font-sans">Payout Document Voucher</h4>
+                        <p className="text-[10px] text-indigo-400 font-mono tracking-wider">ESTIMATION LEDGER RUN #{(Math.floor(Math.random() * 900) + 100)}</p>
+                      </div>
+                      <span className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400 border border-indigo-500/20">
+                        <Coins className="w-5 h-5" />
+                      </span>
+                    </div>
+
+                    {/* Receipt Line Items */}
+                    <div className="space-y-4 text-xs">
+                      <div className="flex justify-between border-b border-white/5 pb-2">
+                        <span className="text-slate-400">Simulated Project:</span>
+                        <span className="font-bold text-white text-right truncate max-w-44">
+                          {activeProjRule ? (activeProjRule.project_name || activeProjRule.name) : "General Properties Ltd"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between border-b border-white/5 pb-2">
+                        <span className="text-slate-400">Property Value base BDT:</span>
+                        <span className="font-mono font-bold text-white">{(sandboxValue).toLocaleString()} ৳</span>
+                      </div>
+
+                      <div className="flex justify-between border-b border-white/5 pb-2">
+                        <span className="text-slate-400">Indexed Progressive rate:</span>
+                        <span className="font-mono font-bold text-white">
+                          {baseSlabPercent.toFixed(2)}% <span className="text-[9px] text-slate-400 font-sans font-normal">(Slab #{sandboxSeq})</span>
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between border-b border-white/5 pb-2">
+                        <span className="text-slate-400">First/Top Floor Bonus multiplier:</span>
+                        <span className="font-mono font-bold text-emerald-400">
+                          +{heightBonusPercent.toFixed(2)}%
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between border-b border-white/5 pb-2">
+                        <span className="text-slate-400">Effective Aggregate Rate:</span>
+                        <span className="font-mono font-bold text-indigo-300">
+                          {totalPercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Gigantic Glowing Total */}
+                  <div className="pt-8 space-y-4 border-t border-white/5 mt-8 relative z-10">
+                    <div className="text-center space-y-1">
+                      <span className="text-[9px] font-bold text-indigo-400 tracking-widest font-mono uppercase">ESTIMATED PAYOUT ESTIMATE</span>
+                      <h3 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-indigo-300 tracking-tight">
+                        {(calculatedIncentive).toLocaleString()} BDT
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-medium">Estimated sequence commission payout for index sale order.</p>
+                    </div>
+
+                    <div className="p-3 bg-white/5 rounded-2xl text-[9.5px] text-slate-350 leading-relaxed text-center border border-white/10">
+                      📝 Note: Calculations are estimated against current system active live rules schema. Actual ledger payments must undergo administrative review on registration.
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

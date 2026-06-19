@@ -135,6 +135,8 @@ export interface ProjectOnSale {
   total_units: number; // floor_number * units_per_floor
   created_at: string;
   land_share_price?: number; // Default land share price for this pre-sale project
+  first_floor_2_units?: boolean;
+  duplex_configs?: string;
   unit_configs?: {
     [key: string]: {
       size: number;

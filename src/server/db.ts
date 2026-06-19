@@ -10,7 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore, doc, getDoc, setDoc, terminate } from 'firebase/firestore';
+import { initializeFirestore, doc, getDoc, setDoc, terminate, collection, getDocs, deleteDoc } from 'firebase/firestore';
 
 import { 
   User, 
@@ -171,6 +171,8 @@ let lastWrittenDataHashes: Record<string, string> = {};
 let lastLocalSyncTime = 0;
 let lastRemoteSyncCheckTime = 0;
 let activeWritePromises: Promise<any>[] = [];
+let syncRetryTimeout: any = null;
+let currentFileSyncRetryAttempt = 0;
 
 // Handle Firestore failures, setting quota exceeded flag only if there is a real quota limit exceeded error
 function handleFirestoreFailure(err: any): void {
@@ -737,60 +739,89 @@ async function processWriteQueue(): Promise<void> {
   if (isProcessingQueue || writeTasks.length === 0) return;
   isProcessingQueue = true;
 
-  while (writeTasks.length > 0) {
-    const task = writeTasks[0];
-    try {
-      if (supabaseClient) {
-        console.log("[db.ts] Synchronizing database state to Supabase...");
-        const keys: (keyof DatabaseStore)[] = [
-          'users',
-          'projects',
-          'salesTeams',
-          'teamProjects',
-          'salesExecutives',
-          'incentiveRules',
-          'bonusRules',
-          'sales',
-          'salesIncentives',
-          'auditLogs',
-          'notifications',
-          'projectsOnSale',
-          'unitRegistrations'
-        ];
+  try {
+    while (writeTasks.length > 0) {
+      const task = writeTasks[0];
+      try {
+        if (supabaseClient) {
+          console.log("[db.ts] Synchronizing database state to Supabase...");
+          const keys: (keyof DatabaseStore)[] = [
+            'users',
+            'projects',
+            'salesTeams',
+            'teamProjects',
+            'salesExecutives',
+            'incentiveRules',
+            'bonusRules',
+            'sales',
+            'salesIncentives',
+            'auditLogs',
+            'notifications',
+            'projectsOnSale',
+            'unitRegistrations'
+          ];
 
-        const sanitizedStore = removeUndefined(task.store);
-        const upsertRows = keys.map(key => ({
-          key: key,
-          data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : []
-        }));
+          const sanitizedStore = removeUndefined(task.store);
+          const upsertRows = keys.map(key => ({
+            key: key,
+            data: sanitizedStore[key] !== undefined ? sanitizedStore[key] : []
+          }));
 
-        const { error } = await withTimeout<any>(
-          supabaseClient
-            .from('sales_portal_data')
-            .upsert(upsertRows, { onConflict: 'key' }),
-          8000,
-          "Supabase write batch upsert timeout"
-        );
+          const { error } = await withTimeout<any>(
+            supabaseClient
+              .from('sales_portal_data')
+              .upsert(upsertRows, { onConflict: 'key' }),
+            8000,
+            "Supabase write batch upsert timeout"
+          );
 
-        if (error) {
-          console.error("[db.ts] Failed to batch upsert state to Supabase:", error.message);
-          if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
-            console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+          if (error) {
+            console.error("[db.ts] Failed to batch upsert state to Supabase:", error.message);
+            if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+              console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+            }
+          } else {
+            console.log("[db.ts] Successfully synchronized database state to Supabase in a single batch operation!");
           }
-        } else {
-          console.log("[db.ts] Successfully synchronized database state to Supabase in a single batch operation!");
         }
-      }
 
-      task.resolve();
-    } catch (err: any) {
-      console.error("[db.ts] Failed to save state to Firebase/Supabase inside queue:", err);
-      task.reject(err);
+        task.resolve();
+      } catch (err: any) {
+        console.error("[db.ts] Failed to save state to Firebase/Supabase inside queue:", err);
+        task.reject(err);
+      } finally {
+        writeTasks.shift(); // Always shift task to prevent infinite queue loops
+      }
     }
-    writeTasks.shift(); // Remove the completed task
+  } finally {
+    isProcessingQueue = false; // Always clear processing flag to prevent permanent locks
+  }
+}
+
+// Background sync retry scheduler with exponential backoff and random jitter
+function scheduleSyncRetry(store: DatabaseStore): void {
+  if (!firestoreDb || isFirestoreQuotaExceeded) return;
+  if (currentFileSyncRetryAttempt >= 5) {
+    console.warn(`[db.ts] Max background sync retry attempts (5) reached. Will wait for next user action.`);
+    return;
   }
 
-  isProcessingQueue = false;
+  if (syncRetryTimeout) {
+    clearTimeout(syncRetryTimeout);
+  }
+
+  currentFileSyncRetryAttempt++;
+  const delay = Math.min(1000 * Math.pow(2, currentFileSyncRetryAttempt) + Math.random() * 500, 30000); // Exponential backoff with jitter, max 30s
+  console.log(`[db.ts] Scheduling background sync retry #${currentFileSyncRetryAttempt} in ${Math.round(delay)}ms due to network instability...`);
+
+  syncRetryTimeout = setTimeout(async () => {
+    console.log(`[db.ts] Running scheduled background sync retry #${currentFileSyncRetryAttempt}...`);
+    try {
+      await saveStoreToFirestore(store);
+    } catch (err: any) {
+      console.error(`[db.ts] Scheduled sync retry execution error:`, err.message || err);
+    }
+  }, delay);
 }
 
 // Synchronize full database state to Firebase Firestore safely
@@ -803,9 +834,13 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
       'notifications', 'projectsOnSale', 'unitRegistrations', 'rolePermissions'
     ];
 
-    // --- PARALLEL WRITES OPTIMIZATION ---
+    // --- SEQUENTIAL WRITES TO PREVENT NETWORK CONGESTION ---
     let anyKeyWritten = false;
-    const writePromises = keys.map(async (key) => {
+    let hadTransientError = false;
+    for (const key of keys) {
+      if (isFirestoreQuotaExceeded || !firestoreDb) {
+        break;
+      }
       if (store[key] !== undefined) {
         const sanitized = removeUndefined(store[key]);
         
@@ -820,13 +855,13 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
           }
         } catch (_) {}
 
-        if (shouldSkip) return;
+        if (shouldSkip) continue;
 
         const docRef = doc(firestoreDb, 'sales_portal_data', key);
         try {
           await withTimeout(
             setDoc(docRef, { data: sanitized }),
-            15000,
+            35000,
             `Firestore write timeout for key ${key}`
           );
           
@@ -841,21 +876,37 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
           if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
             console.warn(`[db.ts] Firestore write failed due to quota limit for key ${key}: ${errMsg}.`);
             handleFirestoreFailure(err);
+            break;
           } else {
             // Transient timeout or other network delay, log but do NOT throw or trigger permanent deactivation
-            console.warn(`[db.ts] Firestore sync delay for key ${key}: ${errMsg}. Retrying on next interaction.`);
+            hadTransientError = true;
+            console.log(`[db.ts] Firestore sync delay for key ${key}: ${errMsg}.`);
           }
         }
       }
-    });
+    }
 
-    await Promise.all(writePromises);
+    if (hadTransientError) {
+      console.log(`[db.ts] One or more Firestore keys failed to synchronize due to transaction delay or network instability. Scheduling background retry.`);
+      scheduleSyncRetry(store);
+      return;
+    }
+
+    if (isFirestoreQuotaExceeded || !firestoreDb) {
+      return;
+    }
 
     const nowEpoch = Date.now();
 
     if (!anyKeyWritten) {
       console.log("[db.ts] Safe bypass: All dataset keys match current hashes. Bypassed redundant metadata save to conserve Spark quota.");
       lastLocalSyncTime = nowEpoch;
+      // Clear retry sequence on verified successful synchronization bypass
+      if (syncRetryTimeout) {
+        clearTimeout(syncRetryTimeout);
+        syncRetryTimeout = null;
+      }
+      currentFileSyncRetryAttempt = 0;
       return;
     }
 
@@ -892,7 +943,8 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
         handleFirestoreFailure(err);
         return;
       } else {
-        console.warn(`[db.ts] Firestore sync delay for metadata: ${errMsg}. Retrying on next interaction.`);
+        console.warn(`[db.ts] Firestore sync delay for metadata: ${errMsg}.`);
+        scheduleSyncRetry(store);
         return;
       }
     }
@@ -900,8 +952,21 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
     // Match our local sync timestamp so we don't redundantly re-pull our own write
     lastLocalSyncTime = nowEpoch;
     console.log("[db.ts] Successfully synchronized full database state and metadata/lastLocalSyncTime to Firebase Firestore!");
+
+    // Clear retry sequence on verified successful synchronization
+    if (syncRetryTimeout) {
+      clearTimeout(syncRetryTimeout);
+      syncRetryTimeout = null;
+    }
+    currentFileSyncRetryAttempt = 0;
   } catch (err: any) {
-    console.error("[db.ts] Failed to sync database state to Firebase Firestore:", err.message || err);
+    const errMsg = err.message || String(err);
+    if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+      handleFirestoreFailure(err);
+    } else {
+      console.error("[db.ts] Failed to sync database state to Firebase Firestore (transient):", errMsg);
+      scheduleSyncRetry(store);
+    }
   }
 }
 
@@ -958,7 +1023,7 @@ export async function pullFromFirestore(): Promise<void> {
       const docRef = doc(firestoreDb, 'sales_portal_data', key);
       const docSnap = await withTimeout<any>(
         getDoc(docRef),
-        15000,
+        35000,
         `Firestore load timeout for key ${key}`
       );
       if (docSnap.exists()) {
@@ -976,6 +1041,10 @@ export async function pullFromFirestore(): Promise<void> {
       }
     } catch (err: any) {
       console.error(`[db.ts] Firebase error loading key '${key}':`, err.message || err);
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+        handleFirestoreFailure(err);
+      }
     }
   });
 
@@ -1023,7 +1092,7 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
     try {
       const metaSnap = await withTimeout<any>(
         getDoc(metaRef),
-        15000,
+        35000,
         "Firestore metadata load timeout"
       );
       if (metaSnap.exists()) {
@@ -1034,6 +1103,10 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
       metadataFetchSuccessful = true;
     } catch (err: any) {
       console.log("[db.ts] Safe metadata read notice (will skip deploy overwrite to avoid overwriting during transient connection delays):", err.message || err);
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+        handleFirestoreFailure(err);
+      }
     }
 
     if (!cachedStore) {
@@ -1190,11 +1263,18 @@ export function getPendingWrites(): Promise<any> {
   return Promise.all(activeWritePromises);
 }
 
+let activeWritePromiseChain: Promise<any> = Promise.resolve();
+
 // Synchronously update cache, and trigger direct async/awaited Firestore save with back-propagating promise and safely managed globally caught rejection to prevent unhandled rejections
 export function writeStore(store: DatabaseStore): Promise<void> {
   cachedStore = store;
   
-  const promise = writeStoreToFirestore(store);
+  // Chain the write operation to execute strictly sequentially after any previous write completes
+  const promise = activeWritePromiseChain.then(() => writeStoreToFirestore(store)).catch((err) => {
+    console.warn("[db.ts] Sequential write helper encountered an error:", err ? (err.message || err) : err);
+  });
+  
+  activeWritePromiseChain = promise;
   
   // Register this promise in active items
   activeWritePromises.push(promise);
@@ -1647,6 +1727,83 @@ export async function getLiveFirestoreBackup(): Promise<DatabaseStore> {
   }
 }
 
+export async function createFirestoreSnapshot(createdByEmail: string): Promise<any> {
+  if (!firestoreDb) {
+    throw new Error("Firestore database is not connected. Manual snapshot requires an active Cloud Firestore connection.");
+  }
+  if (isFirestoreQuotaExceeded) {
+    throw new Error("Firestore write quota has been exceeded. Manual snapshot cannot be stored in the cloud at this time.");
+  }
+
+  const backupId = `backup-${Date.now()}`;
+  const docRef = doc(firestoreDb, 'backups', backupId);
+  const currentStore = getStore();
+  const snapshotRecord = {
+    id: backupId,
+    timestamp: new Date().toISOString(),
+    createdBy: createdByEmail || 'Admin',
+    data: JSON.stringify(currentStore)
+  };
+
+  await setDoc(docRef, snapshotRecord);
+  return { id: backupId, timestamp: snapshotRecord.timestamp, createdBy: snapshotRecord.createdBy, size: snapshotRecord.data.length };
+}
+
+export async function listFirestoreSnapshots(): Promise<any[]> {
+  if (!firestoreDb) {
+    return [];
+  }
+  
+  const collRef = collection(firestoreDb, 'backups');
+  const snap = await getDocs(collRef);
+  const list: any[] = [];
+  
+  snap.forEach(docSnap => {
+    const record = docSnap.data();
+    list.push({
+      id: record.id || docSnap.id,
+      timestamp: record.timestamp || new Date().toISOString(),
+      createdBy: record.createdBy || 'Unknown',
+      size: record.data ? record.data.length : 0
+    });
+  });
+
+  list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return list;
+}
+
+export async function restoreFirestoreSnapshot(snapshotId: string): Promise<any> {
+  if (!firestoreDb) {
+    throw new Error("Firestore database is not connected. Restore requires an active Cloud Firestore connection.");
+  }
+
+  const docRef = doc(firestoreDb, 'backups', snapshotId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) {
+    throw new Error(`Snapshot with ID "${snapshotId}" not found.`);
+  }
+
+  const record = docSnap.data();
+  if (!record.data) {
+    throw new Error("Snapshot has no database content.");
+  }
+
+  const restoredStore: DatabaseStore = JSON.parse(record.data);
+  
+  await writeStore(restoredStore);
+  return { success: true, restoredAt: new Date().toISOString() };
+}
+
+export async function deleteFirestoreSnapshot(snapshotId: string): Promise<any> {
+  if (!firestoreDb) {
+    throw new Error("Firestore database is not connected. Delete requires an active Cloud Firestore connection.");
+  }
+
+  const docRef = doc(firestoreDb, 'backups', snapshotId);
+  await deleteDoc(docRef);
+  return { success: true };
+}
+
 export async function getFirebaseDiagnostics(): Promise<any> {
   let isFirestoreConfigured = !!firestoreDb;
   let connectionStatus = 'failed';
@@ -1659,7 +1816,7 @@ export async function getFirebaseDiagnostics(): Promise<any> {
       const testDocRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
       const testSnap = await withTimeout<any>(
         getDoc(testDocRef),
-        12000,
+        35000,
         "Diagnostics metadata read timeout"
       );
       

@@ -7,5 +7,8 @@ service cloud.firestore {
     match /sales_portal_data/{document} {
       allow read, write: if true;
     }
+    match /backups/{document} {
+      allow read, write: if true;
+    }
   }
 }

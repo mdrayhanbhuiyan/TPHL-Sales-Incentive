@@ -71,8 +71,13 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
     floor_number: 1,
     units_per_floor: 2,
     land_share_price: '' as string | number,
+    first_floor_2_units: false,
+    duplex_configs: '',
   });
   const [unitConfigs, setUnitConfigs] = useState<{ [key: string]: { size: number; land_share: number } }>({});
+  const [duplexLowerFloor, setDuplexLowerFloor] = useState<number>(1);
+  const [duplexLetter, setDuplexLetter] = useState<string>('A');
+  const [showDuplexBuilder, setShowDuplexBuilder] = useState<boolean>(false);
 
   // Details popover state
   const [selectedProject, setSelectedProject] = useState<ProjectOnSale | null>(null);
@@ -201,12 +206,19 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
       floor_number: 9,
       units_per_floor: 2,
       land_share_price: defaultLandShare,
+      first_floor_2_units: false,
+      duplex_configs: '',
     });
     
     setUnitConfigs({
       'A': { size: 1200, land_share: defaultLandShare },
       'B': { size: 1200, land_share: defaultLandShare },
+      '1A': { size: 1200, land_share: defaultLandShare },
+      '1B': { size: 1200, land_share: defaultLandShare },
     });
+    setShowDuplexBuilder(false);
+    setDuplexLowerFloor(1);
+    setDuplexLetter('A');
     setIsModalOpen(true);
   };
 
@@ -219,6 +231,8 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
       floor_number: project.floor_number,
       units_per_floor: project.units_per_floor,
       land_share_price: project.land_share_price !== undefined ? project.land_share_price : '',
+      first_floor_2_units: !!project.first_floor_2_units,
+      duplex_configs: project.duplex_configs || '',
     });
     
     const defaultConfigs: { [key: string]: { size: number; land_share: number } } = {};
@@ -236,7 +250,20 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
         defaultConfigs[letter] = { size: defaultSize, land_share: defaultLandShare };
       }
     }
+
+    // Always pre-populate split units configurations if relevant
+    for (const splitKey of ['1A', '1B']) {
+      if (project.unit_configs && project.unit_configs[splitKey]) {
+        defaultConfigs[splitKey] = { ...project.unit_configs[splitKey] };
+      } else {
+        defaultConfigs[splitKey] = { size: defaultSize, land_share: defaultLandShare };
+      }
+    }
+
     setUnitConfigs(defaultConfigs);
+    setShowDuplexBuilder(!!project.duplex_configs);
+    setDuplexLowerFloor(1);
+    setDuplexLetter('A');
     setIsModalOpen(true);
   };
 
@@ -335,6 +362,8 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
       floor_number: Number(formData.floor_number || 1),
       units_per_floor: Number(formData.units_per_floor || 1),
       land_share_price: formData.land_share_price !== '' ? Number(formData.land_share_price) : undefined,
+      first_floor_2_units: formData.first_floor_2_units,
+      duplex_configs: formData.duplex_configs.trim(),
       unit_configs: unitConfigs,
     };
 
@@ -501,16 +530,114 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
     }
   };
 
-  // Helper to generate visual units codes like 1A, 1B, 2A...
-  const getUnitNamesList = (floors: number, units_per_floor: number): string[] => {
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
-    const units = [];
-    for (let f = 1; f <= floors; f++) {
-      for (let u = 0; u < units_per_floor; u++) {
-        const letter = letters[u] || String.fromCharCode(65 + u);
-        units.push(`${f}${letter}`);
+  interface DuplexConfigClient {
+    type: 'floor' | 'unit';
+    lowFloor: number;
+    highFloor: number;
+    letter?: string;
+  }
+
+  const parseDuplexConfigsClient = (duplex_configs?: string): DuplexConfigClient[] => {
+    const configs: DuplexConfigClient[] = [];
+    if (!duplex_configs) return configs;
+
+    const parts = duplex_configs.split(',');
+    for (const part of parts) {
+      const trimmed = part.trim().toUpperCase();
+      const unitMatch = trimmed.match(/^(\d+)([A-M])-(\d+)([A-M])$/);
+      if (unitMatch) {
+        const f1 = parseInt(unitMatch[1]);
+        const u1 = unitMatch[2];
+        const f2 = parseInt(unitMatch[3]);
+        const u2 = unitMatch[4];
+        if (f1 > 0 && f2 > 0 && Math.abs(f1 - f2) === 1 && u1 === u2) {
+          configs.push({
+            type: 'unit',
+            lowFloor: Math.min(f1, f2),
+            highFloor: Math.max(f1, f2),
+            letter: u1
+          });
+        }
+        continue;
+      }
+
+      const floorMatch = trimmed.match(/^(\d+)-(\d+)$/);
+      if (floorMatch) {
+        const f1 = parseInt(floorMatch[1]);
+        const f2 = parseInt(floorMatch[2]);
+        if (f1 > 0 && f2 > 0 && Math.abs(f1 - f2) === 1) {
+          configs.push({
+            type: 'floor',
+            lowFloor: Math.min(f1, f2),
+            highFloor: Math.max(f1, f2)
+          });
+        }
       }
     }
+    return configs;
+  };
+
+  // Helper to generate visual units codes like 1A, 1B, 2A...
+  const getUnitNamesList = (
+    floors: number,
+    units_per_floor: number,
+    first_floor_2_units?: boolean,
+    duplex_configs?: string
+  ): string[] => {
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    const units: string[] = [];
+    const duplexes = parseDuplexConfigsClient(duplex_configs);
+
+    const isHighPart = (f: number, letter: string) => {
+      return duplexes.some(d => {
+        if (d.highFloor === f) {
+          if (d.type === 'floor') return true;
+          if (d.type === 'unit' && d.letter === letter) return true;
+        }
+        return false;
+      });
+    };
+
+    const getDuplexLabel = (f: number, letter: string) => {
+      const d = duplexes.find(d => {
+        if (d.lowFloor === f) {
+          if (d.type === 'floor') return true;
+          if (d.type === 'unit' && d.letter === letter) return true;
+        }
+        return false;
+      });
+      if (d) {
+        if (d.type === 'floor') {
+          return { isDuplex: true, label: `${d.lowFloor}-${d.highFloor}${letter}` };
+        } else {
+          return { isDuplex: true, label: `${d.lowFloor}${d.letter}-${d.highFloor}${d.letter}` };
+        }
+      }
+      return { isDuplex: false, label: '' };
+    };
+
+    for (let f = 1; f <= floors; f++) {
+      let unitsCount = units_per_floor;
+      if (f === 1 && units_per_floor === 1 && first_floor_2_units) {
+        unitsCount = 2;
+      }
+
+      for (let u = 0; u < unitsCount; u++) {
+        const letter = letters[u] || String.fromCharCode(65 + u);
+        
+        if (isHighPart(f, letter)) {
+          continue;
+        }
+
+        const dupInfo = getDuplexLabel(f, letter);
+        if (dupInfo.isDuplex) {
+          units.push(dupInfo.label);
+        } else {
+          units.push(`${f}${letter}`);
+        }
+      }
+    }
+
     return units;
   };
 
@@ -624,7 +751,7 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projectsOnSale.map((project) => {
             const mappedDir = directoryProjects.find(dp => dp.id === project.project_id);
-            const unitsList = getUnitNamesList(project.floor_number, project.units_per_floor);
+            const unitsList = getUnitNamesList(project.floor_number, project.units_per_floor, project.first_floor_2_units, project.duplex_configs);
 
             return (
               <motion.div
@@ -733,10 +860,33 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
 
         const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
         const getUnitsForFloor = (floorNum: number, unitsCount: number) => {
+          const duplexes = parseDuplexConfigsClient(selectedProject.duplex_configs);
           const uList: string[] = [];
-          for (let u = 0; u < unitsCount; u++) {
+          
+          let count = unitsCount;
+          if (floorNum === 1 && unitsCount === 1 && selectedProject.first_floor_2_units) {
+            count = 2;
+          }
+
+          for (let u = 0; u < count; u++) {
             const letter = letters[u] || String.fromCharCode(65 + u);
-            uList.push(`${floorNum}${letter}`);
+            
+            // Check if this unit is part of a duplex (either floor-level or unit-level)
+            const duplexOfThis = duplexes.find(d => {
+              if (d.type === 'floor' && (d.lowFloor === floorNum || d.highFloor === floorNum)) return true;
+              if (d.type === 'unit' && (d.lowFloor === floorNum || d.highFloor === floorNum) && d.letter === letter) return true;
+              return false;
+            });
+
+            if (duplexOfThis) {
+              if (duplexOfThis.type === 'floor') {
+                uList.push(`${duplexOfThis.lowFloor}-${duplexOfThis.highFloor}${letter}`);
+              } else {
+                uList.push(`${duplexOfThis.lowFloor}${duplexOfThis.letter}-${duplexOfThis.highFloor}${duplexOfThis.letter}`);
+              }
+            } else {
+              uList.push(`${floorNum}${letter}`);
+            }
           }
           return uList;
         };
@@ -840,7 +990,7 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                             </div>
 
                             {/* Dynamic unit grid representing level apartments */}
-                            <div className={`flex-1 grid ${gridColsClass} gap-2`}>
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 dynamic-unit-grid">
                               {units.map((unitName) => {
                                 const { status } = getUnitStatusDetails(unitName);
                                 const isSelected = selectedUnit === unitName;
@@ -927,6 +1077,9 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                             <span className="font-bold text-indigo-600 dark:text-indigo-400">
                               {(() => {
                                 const letter = selectedUnit.slice(-1).toUpperCase();
+                                if (selectedProject.unit_configs && selectedProject.unit_configs[selectedUnit]) {
+                                  return `${selectedProject.unit_configs[selectedUnit].size} SFT (Type ${selectedUnit})`;
+                                }
                                 if (selectedProject.unit_configs && selectedProject.unit_configs[letter]) {
                                   return `${selectedProject.unit_configs[letter].size} SFT (Type ${letter})`;
                                 }
@@ -939,6 +1092,9 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                             <span className="font-bold text-emerald-600 dark:text-emerald-450">
                               {(() => {
                                 const letter = selectedUnit.slice(-1).toUpperCase();
+                                if (selectedProject.unit_configs && selectedProject.unit_configs[selectedUnit]) {
+                                  return `${(selectedProject.unit_configs[selectedUnit].land_share).toLocaleString()} BDT`;
+                                }
                                 if (selectedProject.unit_configs && selectedProject.unit_configs[letter]) {
                                   return `${(selectedProject.unit_configs[letter].land_share).toLocaleString()} BDT`;
                                 }
@@ -1103,7 +1259,7 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-slate-800 text-gray-700 dark:text-slate-300 font-semibold">
-                        {getUnitNamesList(selectedProject.floor_number, selectedProject.units_per_floor).map((unitName) => {
+                        {getUnitNamesList(selectedProject.floor_number, selectedProject.units_per_floor, selectedProject.first_floor_2_units, selectedProject.duplex_configs).map((unitName) => {
                           const { status, sale, reg } = getUnitStatusDetails(unitName);
                           const exec = sale ? executives.find(e => e.id === sale.executive_id) : null;
 
@@ -1383,65 +1539,223 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                 </div>
               </div>
 
+              {/* Special configurations: Duplex pairs and 1st floor split units */}
+              <div className="bg-indigo-50/20 dark:bg-slate-850 p-4 rounded-2xl border border-indigo-100/40 dark:border-slate-750 space-y-4">
+                <span className="block text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest text-[9px]">ADVANCED ARCHITECTURE ACCENTS</span>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  {formData.units_per_floor === 1 ? (
+                    <div className="flex items-center space-x-3 pb-2 border-b border-gray-100 dark:border-slate-800">
+                      <input
+                        type="checkbox"
+                        id="first_floor_2_units"
+                        checked={formData.first_floor_2_units}
+                        onChange={(e) => setFormData({ ...formData, first_floor_2_units: e.target.checked })}
+                        className="w-4 h-4 rounded border-gray-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <label htmlFor="first_floor_2_units" className="text-xs font-semibold text-gray-700 dark:text-slate-300 cursor-pointer">
+                        1st Floor Has 2 Units (Split Layout)
+                      </label>
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="show_duplex_builder"
+                          checked={showDuplexBuilder}
+                          onChange={(e) => {
+                            setShowDuplexBuilder(e.target.checked);
+                            if (!e.target.checked) {
+                              setFormData(prev => ({ ...prev, duplex_configs: '' }));
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-gray-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <label htmlFor="show_duplex_builder" className="text-xs font-semibold text-gray-700 dark:text-slate-300 cursor-pointer">
+                          Configure Duplex Flats (Interactive)
+                        </label>
+                      </div>
+                    </div>
+
+                    {showDuplexBuilder && (
+                      <div className="bg-indigo-50/20 dark:bg-slate-800/45 p-3 rounded-2xl border border-indigo-100/30 dark:border-slate-800 space-y-3">
+                        <span className="block text-[9px] font-bold text-gray-400 dark:text-slate-400 uppercase tracking-wide">Interactive Duplex Link Creator</span>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                          <div className="space-y-1">
+                            <label className="block text-[9px] text-gray-400 font-bold uppercase">Lower Level</label>
+                            <select
+                              value={duplexLowerFloor}
+                              onChange={(e) => setDuplexLowerFloor(Number(e.target.value))}
+                              className="w-full text-xs font-semibold p-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-850 dark:text-white"
+                            >
+                              {Array.from({ length: Math.max(1, Number(formData.floor_number || 2) - 1) }).map((_, fIndex) => (
+                                <option key={fIndex + 1} value={fIndex + 1}>Floor {fIndex + 1}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="block text-[9px] text-gray-400 font-bold uppercase">Unit Type Suffix</label>
+                            <select
+                              value={duplexLetter}
+                              onChange={(e) => setDuplexLetter(e.target.value)}
+                              className="w-full text-xs font-semibold p-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-850 dark:text-white"
+                            >
+                              {Array.from({ length: Number(formData.units_per_floor || 1) }).map((_, uIndex) => {
+                                const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+                                const letter = letters[uIndex] || String.fromCharCode(65 + uIndex);
+                                return <option key={letter} value={letter}>Unit {letter}</option>;
+                              })}
+                            </select>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const low = duplexLowerFloor;
+                              const high = low + 1;
+                              const letter = duplexLetter;
+                              const pair = `${low}${letter}-${high}${letter}`;
+                              
+                              const currentParts = formData.duplex_configs ? formData.duplex_configs.split(',').map(x => x.trim()).filter(Boolean) : [];
+                              if (currentParts.includes(pair)) {
+                                toast.error("This duplex pair is already configured.");
+                                return;
+                              }
+                              currentParts.push(pair);
+                              setFormData({ ...formData, duplex_configs: currentParts.join(',') });
+                              toast.success(`Duplex link ${pair} added!`);
+                            }}
+                            className="w-full justify-center p-2 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            + Add Link Pair
+                          </button>
+                        </div>
+
+                        <div className="pt-2 border-t border-indigo-100/30 dark:border-slate-800 space-y-1.5">
+                          <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase">Configured Duplex Rules List</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 8B-9B,12A-13A,8-9 (or visual-configured)"
+                            value={formData.duplex_configs}
+                            onChange={(e) => setFormData({ ...formData, duplex_configs: e.target.value })}
+                            className="w-full text-xs font-semibold px-3 py-2 border border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-indigo-600 placeholder:text-gray-400"
+                          />
+                          <p className="text-[9px] text-gray-400 mt-0.5">Merges selected unit on low floor and floor+1. Format: comma-separated list of pairs (e.g. 8B-9B, or 8-9 for full floors).</p>
+
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {formData.duplex_configs ? (
+                              formData.duplex_configs.split(',').map(x => x.trim()).filter(Boolean).map((pair, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-100/10">
+                                  {pair}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const parts = formData.duplex_configs.split(',').map(x => x.trim()).filter(Boolean);
+                                      const filtered = parts.filter(p => p !== pair);
+                                      setFormData({ ...formData, duplex_configs: filtered.join(',') });
+                                    }}
+                                    className="text-indigo-600 dark:text-indigo-400 hover:text-rose-500 hover:bg-rose-50/10 font-bold rounded-full w-3.5 h-3.5 inline-flex items-center justify-center ml-0.5"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[9px] text-gray-450 italic">No duplex configurations yet. Link a pair above to start!</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Dynamic Suffix configurations section */}
               <div className="space-y-2 border-t border-gray-100 dark:border-slate-800 pt-3">
                 <label className="block text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
                   Configure Individual Unit Types (Layout, Sizes & Pricing)
                 </label>
                 <div className="max-h-56 overflow-y-auto space-y-2 border border-dashed border-indigo-100 dark:border-slate-800 p-2.5 rounded-2xl bg-indigo-50/10">
-                  {Array.from({ length: Number(formData.units_per_floor || 1) }).map((_, index) => {
+                  {(() => {
                     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
-                    const letter = letters[index] || String.fromCharCode(65 + index);
-                    const config = unitConfigs[letter] || { size: 1200, land_share: 500000 };
+                    const activeKeys = letters.slice(0, Number(formData.units_per_floor || 1));
+                    if (Number(formData.units_per_floor) === 1 && formData.first_floor_2_units) {
+                      activeKeys.push('1A', '1B');
+                    }
                     
-                    return (
-                      <div key={letter} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center bg-gray-50/70 dark:bg-slate-850/50 p-2.5 rounded-xl border border-gray-100/30">
-                        <div className="text-xs font-bold text-gray-700 dark:text-slate-300">
-                          Unit <span className="font-mono text-indigo-600 dark:text-indigo-400 font-extrabold text-sm">{letter}</span> (e.g. {formData.floor_number || 4}{letter})
+                    return activeKeys.map((key) => {
+                      const config = unitConfigs[key] || { size: 1200, land_share: 500000 };
+                      const label = (key === '1A' || key === '1B') 
+                        ? `Floor 1 Split Unit ${key}`
+                        : `Standard Unit Suffix ${key} (e.g. 4${key})`;
+                        
+                      return (
+                        <div key={key} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center bg-gray-50/70 dark:bg-slate-850/50 p-2.5 rounded-xl border border-gray-100/30">
+                          <div className="text-xs font-bold text-gray-700 dark:text-slate-300">
+                            {label}
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Size (SFT)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              required
+                              value={config.size}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setUnitConfigs(prev => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], size: val }
+                                }));
+                              }}
+                              className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-850 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Land Share price (BDT)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              required
+                              value={config.land_share}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setUnitConfigs(prev => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], land_share: val }
+                                }));
+                              }}
+                              className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-850 dark:text-white"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Size (SFT)</label>
-                          <input
-                            type="number"
-                            min="1"
-                            required
-                            value={config.size}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setUnitConfigs(prev => ({
-                                ...prev,
-                                [letter]: { ...prev[letter], size: val }
-                              }));
-                            }}
-                            className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-gray-400 uppercase block mb-0.5">Land Share price (BDT)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            required
-                            value={config.land_share}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setUnitConfigs(prev => ({
-                                ...prev,
-                                [letter]: { ...prev[letter], land_share: val }
-                              }));
-                            }}
-                            className="w-full text-xs font-semibold px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-white"
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
               <div className="pt-2 bg-indigo-50/50 dark:bg-indigo-950/20 p-3.5 border border-indigo-100/50 dark:border-indigo-900/30 rounded-2xl">
                 <p className="text-[10px] text-indigo-700 dark:text-indigo-400 font-semibold leading-relaxed">
-                  💡 Autogen Verdict: This setup generates in database exactly <strong>{Number(formData.floor_number || 1) * Number(formData.units_per_floor || 1)}</strong> units (named dynamically floor-wise from 1A, 1B up to {formData.floor_number}{['A','B','C','D','E','F','G'][formData.units_per_floor - 1] || 'X'}).
+                  💡 Autogen Verdict: This setup generates in database exactly <strong>
+                    {
+                      (() => {
+                        const units = getUnitNamesList(
+                          Number(formData.floor_number || 1),
+                          Number(formData.units_per_floor || 1),
+                          formData.first_floor_2_units,
+                          formData.duplex_configs
+                        );
+                        return units.length;
+                      })()
+                    }
+                  </strong> units total (taking duplex configurations and 1st floor split options into account).
                 </p>
               </div>
 

@@ -19,6 +19,10 @@ import {
   getLiveFirestoreBackup,
   getFirebaseDiagnostics,
   getCSVDiagnostics,
+  createFirestoreSnapshot,
+  listFirestoreSnapshots,
+  restoreFirestoreSnapshot,
+  deleteFirestoreSnapshot,
   DatabaseStore,
   arrayToCSV,
   csvToItems,
@@ -1106,6 +1110,116 @@ export async function startServer() {
     res.status(201).json({ count: importedProjects.length, items: importedProjects });
   });
 
+  interface DuplexConfigServer {
+    type: 'floor' | 'unit';
+    lowFloor: number;
+    highFloor: number;
+    letter?: string;
+  }
+
+  function parseDuplexConfigsServer(duplex_configs?: string): DuplexConfigServer[] {
+    const configs: DuplexConfigServer[] = [];
+    if (!duplex_configs) return configs;
+
+    const parts = duplex_configs.split(',');
+    for (const part of parts) {
+      const trimmed = part.trim().toUpperCase();
+      const unitMatch = trimmed.match(/^(\d+)([A-M])-(\d+)([A-M])$/);
+      if (unitMatch) {
+        const f1 = parseInt(unitMatch[1]);
+        const u1 = unitMatch[2];
+        const f2 = parseInt(unitMatch[3]);
+        const u2 = unitMatch[4];
+        if (f1 > 0 && f2 > 0 && Math.abs(f1 - f2) === 1 && u1 === u2) {
+          configs.push({
+            type: 'unit',
+            lowFloor: Math.min(f1, f2),
+            highFloor: Math.max(f1, f2),
+            letter: u1
+          });
+        }
+        continue;
+      }
+
+      const floorMatch = trimmed.match(/^(\d+)-(\d+)$/);
+      if (floorMatch) {
+        const f1 = parseInt(floorMatch[1]);
+        const f2 = parseInt(floorMatch[2]);
+        if (f1 > 0 && f2 > 0 && Math.abs(f1 - f2) === 1) {
+          configs.push({
+            type: 'floor',
+            lowFloor: Math.min(f1, f2),
+            highFloor: Math.max(f1, f2)
+          });
+        }
+      }
+    }
+    return configs;
+  }
+
+  function getUnitNamesListServer(
+    floor_number: number,
+    units_per_floor: number,
+    first_floor_2_units?: boolean,
+    duplex_configs?: string
+  ): string[] {
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    const units: string[] = [];
+    const duplexes = parseDuplexConfigsServer(duplex_configs);
+
+    const isHighPart = (f: number, letter: string) => {
+      return duplexes.some(d => {
+        if (d.highFloor === f) {
+          if (d.type === 'floor') return true;
+          if (d.type === 'unit' && d.letter === letter) return true;
+        }
+        return false;
+      });
+    };
+
+    const getDuplexLabel = (f: number, letter: string) => {
+      const d = duplexes.find(d => {
+        if (d.lowFloor === f) {
+          if (d.type === 'floor') return true;
+          if (d.type === 'unit' && d.letter === letter) return true;
+        }
+        return false;
+      });
+      if (d) {
+        if (d.type === 'floor') {
+          return { isDuplex: true, label: `${d.lowFloor}-${d.highFloor}${letter}` };
+        } else {
+          return { isDuplex: true, label: `${d.lowFloor}${d.letter}-${d.highFloor}${d.letter}` };
+        }
+      }
+      return { isDuplex: false, label: '' };
+    };
+
+    for (let f = 1; f <= floor_number; f++) {
+      let unitsCount = units_per_floor;
+      if (f === 1 && units_per_floor === 1 && first_floor_2_units) {
+        unitsCount = 2;
+      }
+
+      for (let u = 0; u < unitsCount; u++) {
+        const letter = letters[u] || String.fromCharCode(65 + u);
+        
+        if (isHighPart(f, letter)) {
+          continue;
+        }
+
+        const dupInfo = getDuplexLabel(f, letter);
+        if (dupInfo.isDuplex) {
+          units.push(dupInfo.label);
+        } else {
+          units.push(`${f}${letter}`);
+        }
+      }
+    }
+
+    return units;
+  }
+
   app.post('/api/projects-on-sale', authenticateToken, (req, res) => {
     const user = (req as any).user;
     if (!hasEditPermission(user, 'projects-on-sale')) {
@@ -1113,7 +1227,7 @@ export async function startServer() {
       return;
     }
 
-    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price } = req.body;
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price, first_floor_2_units, duplex_configs } = req.body;
     if (!project_name || !flat_unit_size || !project_id || !floor_number || !units_per_floor) {
       res.status(400).json({ error: "Missing required fields for project on sale." });
       return;
@@ -1121,7 +1235,15 @@ export async function startServer() {
 
     const store = getStore();
     const pid = `pos-${crypto.randomUUID().slice(0, 8)}`;
-    const total_units = Number(floor_number) * Number(units_per_floor);
+    
+    // Generate actual unit names based on floor configuration and duplex properties
+    const unitNames = getUnitNamesListServer(
+      Number(floor_number),
+      Number(units_per_floor),
+      Boolean(first_floor_2_units),
+      duplex_configs
+    );
+    const total_units = unitNames.length;
 
     const newProject = {
       id: pid,
@@ -1132,6 +1254,8 @@ export async function startServer() {
       units_per_floor: Number(units_per_floor),
       total_units,
       land_share_price: land_share_price !== undefined ? Number(land_share_price) : undefined,
+      first_floor_2_units: Boolean(first_floor_2_units),
+      duplex_configs: duplex_configs || "",
       unit_configs: unit_configs || {},
       created_at: new Date().toISOString()
     };
@@ -1139,20 +1263,16 @@ export async function startServer() {
     if (!store.projectsOnSale) store.projectsOnSale = [];
     store.projectsOnSale.push(newProject);
 
-    // Automatically initialize unit registrations to "No" by default for all the units
+    // Automatically initialize unit registrations to "No" by default for all the generated units
     if (!store.unitRegistrations) store.unitRegistrations = [];
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
-    for (let f = 1; f <= Number(floor_number); f++) {
-      for (let u = 0; u < Number(units_per_floor); u++) {
-        const letter = letters[u] || String.fromCharCode(65 + u);
-        store.unitRegistrations.push({
-          id: `reg-${crypto.randomUUID().slice(0, 8)}`,
-          project_on_sale_id: pid,
-          unit_name: `${f}${letter}`,
-          registered: 'No',
-          created_at: new Date().toISOString()
-        });
-      }
+    for (const uName of unitNames) {
+      store.unitRegistrations.push({
+        id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+        project_on_sale_id: pid,
+        unit_name: uName,
+        registered: 'No',
+        created_at: new Date().toISOString()
+      });
     }
 
     writeStore(store);
@@ -1176,11 +1296,15 @@ export async function startServer() {
     }
 
     const current = store.projectsOnSale[pIndex];
-    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price } = req.body;
+    const { project_name, flat_unit_size, project_id, floor_number, units_per_floor, unit_configs, land_share_price, first_floor_2_units, duplex_configs } = req.body;
 
     const floorNum = floor_number !== undefined ? Number(floor_number) : current.floor_number;
     const unitsPerFloor = units_per_floor !== undefined ? Number(units_per_floor) : current.units_per_floor;
-    const total_units = floorNum * unitsPerFloor;
+    const isFirst2Units = first_floor_2_units !== undefined ? Boolean(first_floor_2_units) : !!current.first_floor_2_units;
+    const dConfigs = duplex_configs !== undefined ? duplex_configs : (current.duplex_configs || "");
+
+    const unitNames = getUnitNamesListServer(floorNum, unitsPerFloor, isFirst2Units, dConfigs);
+    const total_units = unitNames.length;
 
     const updated = {
       ...current,
@@ -1191,13 +1315,20 @@ export async function startServer() {
       units_per_floor: unitsPerFloor,
       total_units,
       land_share_price: land_share_price !== undefined ? (land_share_price === null ? undefined : Number(land_share_price)) : current.land_share_price,
+      first_floor_2_units: isFirst2Units,
+      duplex_configs: dConfigs,
       unit_configs: unit_configs !== undefined ? unit_configs : current.unit_configs
     };
 
     store.projectsOnSale[pIndex] = updated;
 
-    // Regenerate/refresh list of unit registrations safely if floor_number or units_per_floor changed!
-    if (floorNum !== current.floor_number || unitsPerFloor !== current.units_per_floor) {
+    // Regenerate/refresh list of unit registrations safely if floor_number, units_per_floor, first_floor_2_units, or duplex_configs changed!
+    if (
+      floorNum !== current.floor_number || 
+      unitsPerFloor !== current.units_per_floor ||
+      isFirst2Units !== !!current.first_floor_2_units ||
+      dConfigs !== (current.duplex_configs || "")
+    ) {
       // Find existing unit registrations for this pre-sale project
       const existingRegs = (store.unitRegistrations || []).filter(r => r.project_on_sale_id === req.params.id);
       const existingMap = new Map(existingRegs.map(r => [r.unit_name, r]));
@@ -1206,23 +1337,18 @@ export async function startServer() {
       store.unitRegistrations = (store.unitRegistrations || []).filter(r => r.project_on_sale_id !== req.params.id);
 
       // Re-add matching units to preserve existing "Yes" registrations and create "No" for new units
-      const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
-      for (let f = 1; f <= floorNum; f++) {
-        for (let u = 0; u < unitsPerFloor; u++) {
-          const letter = letters[u] || String.fromCharCode(65 + u);
-          const uName = `${f}${letter}`;
-          const existing = existingMap.get(uName);
-          if (existing) {
-            store.unitRegistrations.push(existing);
-          } else {
-            store.unitRegistrations.push({
-              id: `reg-${crypto.randomUUID().slice(0, 8)}`,
-              project_on_sale_id: req.params.id,
-              unit_name: uName,
-              registered: 'No',
-              created_at: new Date().toISOString()
-            });
-          }
+      for (const uName of unitNames) {
+        const existing = existingMap.get(uName);
+        if (existing) {
+          store.unitRegistrations.push(existing);
+        } else {
+          store.unitRegistrations.push({
+            id: `reg-${crypto.randomUUID().slice(0, 8)}`,
+            project_on_sale_id: req.params.id,
+            unit_name: uName,
+            registered: 'No',
+            created_at: new Date().toISOString()
+          });
         }
       }
     }
@@ -1262,34 +1388,53 @@ export async function startServer() {
   });
 
   app.put('/api/unit-registrations/:id', authenticateToken, (req, res) => {
-    const user = (req as any).user;
-    if (!hasEditPermission(user, 'registration')) {
-      res.status(403).json({ error: "Unauthorized: You do not have permission to update unit registrations." });
-      return;
+    try {
+      const user = (req as any).user;
+      if (!hasEditPermission(user, 'registration')) {
+        res.status(403).json({ error: "Unauthorized: You do not have permission to update unit registrations." });
+        return;
+      }
+      const { registered, registration_date } = req.body;
+
+      const store = getStore();
+      if (!store.unitRegistrations) store.unitRegistrations = [];
+      const rIndex = store.unitRegistrations.findIndex(r => r.id === req.params.id);
+      if (rIndex === -1) {
+        res.status(404).json({ error: "Unit registration record not found." });
+        return;
+      }
+
+      const current = store.unitRegistrations[rIndex];
+
+      if (registered === 'Yes') {
+        const hasSale = (store.sales || []).some(s => 
+          s.project_on_sale_id && 
+          String(s.project_on_sale_id) === String(current.project_on_sale_id) && 
+          String(s.unit_name).trim().toUpperCase() === String(current.unit_name).trim().toUpperCase()
+        );
+        if (!hasSale) {
+          res.status(400).json({ error: `Cannot complete Deed Registration for Unit "${current.unit_name}". Active logged sales booking record is required before finalizing registration.` });
+          return;
+        }
+      }
+
+      store.unitRegistrations[rIndex] = {
+        ...current,
+        registered: registered || 'No',
+        registration_date: registration_date || undefined
+      };
+
+      // Recalculate remaining incentives since a unit registration is processed or revoked
+      recalculateAllIncentivesDirect(store);
+      
+      // Update store and record audit log atomized
+      logAction(user, "Update Unit Registration", `Updated Unit '${current.unit_name}' registration to: ${registered} (${registration_date || 'No Date'}).`);
+      
+      res.json(store.unitRegistrations[rIndex]);
+    } catch (routeErr: any) {
+      console.error("[server.ts] Error updating unit registration:", routeErr);
+      res.status(500).json({ error: routeErr.message || "An internal error occurred during unit registration update." });
     }
-    const { registered, registration_date } = req.body;
-
-    const store = getStore();
-    if (!store.unitRegistrations) store.unitRegistrations = [];
-    const rIndex = store.unitRegistrations.findIndex(r => r.id === req.params.id);
-    if (rIndex === -1) {
-      res.status(404).json({ error: "Unit registration record not found." });
-      return;
-    }
-
-    const current = store.unitRegistrations[rIndex];
-    store.unitRegistrations[rIndex] = {
-      ...current,
-      registered: registered || 'No',
-      registration_date: registration_date || undefined
-    };
-
-    // Recalculate remaining incentives since a unit registration is processed or revoked
-    recalculateAllIncentivesDirect(store);
-    writeStore(store);
-
-    logAction(user, "Update Unit Registration", `Updated Unit '${current.unit_name}' registration to: ${registered} (${registration_date || 'No Date'}).`);
-    res.json(store.unitRegistrations[rIndex]);
   });
 
   app.post('/api/unit-registrations/bulk', authenticateToken, (req, res) => {
@@ -1343,6 +1488,19 @@ export async function startServer() {
 
       const isRegistered = (String(registered).trim().toLowerCase() === 'yes' || String(registered).trim().toLowerCase() === 'true') ? 'Yes' : 'No';
       const cleanDate = registration_date ? String(registration_date).trim() : undefined;
+
+      if (isRegistered === 'Yes') {
+        const hasSale = (store.sales || []).some(s => 
+          s.project_on_sale_id && 
+          String(s.project_on_sale_id) === String(resolvedPosId) && 
+          String(s.unit_name).trim().toUpperCase() === cleanUnit
+        );
+        if (!hasSale) {
+          skippedCount++;
+          skipped.push(`Row skipped: Unit "${unit_name}" cannot have registered status "Yes" because there is no matching logged sales record for this unit.`);
+          continue;
+        }
+      }
 
       if (existingIdx > -1) {
         store.unitRegistrations[existingIdx] = {
@@ -2465,6 +2623,79 @@ export async function startServer() {
     } catch (err: any) {
       console.error("[server.ts] Live Firestore Backup endpoint error:", err);
       res.status(500).json({ error: "Failed to download live Firestore datasets: " + err.message });
+    }
+  });
+
+  // GET snapshot backups list
+  app.get('/api/system/firestore-snapshots', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const list = await listFirestoreSnapshots();
+      res.json(list);
+    } catch (err: any) {
+      console.error("[server.ts] List Firestore snapshots error:", err);
+      res.status(500).json({ error: "Failed to get Firestore snapshots list: " + err.message });
+    }
+  });
+
+  // POST trigger manual snapshot backup
+  app.post('/api/system/firestore-snapshots', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const result = await createFirestoreSnapshot(user.email || user.username || 'Admin');
+      logAction(user, "Firestore Snapshot Created", `Manual Firestore snapshot created: ${result.id}`);
+      res.json({ success: true, snapshot: result });
+    } catch (err: any) {
+      console.error("[server.ts] Create Firestore snapshot error:", err);
+      res.status(500).json({ error: "Failed to build manual Cloud Firestore snapshot: " + err.message });
+    }
+  });
+
+  // POST restore snapshot backup
+  app.post('/api/system/firestore-snapshots/restore', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const { snapshotId } = req.body;
+      if (!snapshotId) {
+        res.status(400).json({ error: "Please specify a snapshotId to restore." });
+        return;
+      }
+      const result = await restoreFirestoreSnapshot(snapshotId);
+      logAction(user, "Firestore Snapshot Restored", `Manual Firestore snapshot restored: ${snapshotId}`);
+      res.json({ success: true, restoredAt: result.restoredAt });
+    } catch (err: any) {
+      console.error("[server.ts] Restore Firestore snapshot error:", err);
+      res.status(500).json({ error: "Failed to restore Cloud Firestore snapshot: " + err.message });
+    }
+  });
+
+  // DELETE snapshot backup
+  app.delete('/api/system/firestore-snapshots/:id', authenticateToken, async (req, res) => {
+    const user = (req as any).user;
+    if (user.role !== 'Admin') {
+      res.status(403).json({ error: "Requires Admin authentication" });
+      return;
+    }
+    try {
+      const { id } = req.params;
+      const result = await deleteFirestoreSnapshot(id);
+      logAction(user, "Firestore Snapshot Deleted", `Manual Firestore snapshot deleted: ${id}`);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[server.ts] Delete Firestore snapshot error:", err);
+      res.status(500).json({ error: "Failed to delete Cloud Firestore snapshot: " + err.message });
     }
   });
 

@@ -23,7 +23,9 @@ import {
   FolderOpen,
   Search,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Clock,
+  Save
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { useConfirmation } from './ConfirmationDialog';
@@ -108,6 +110,134 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [integrityReport, setIntegrityReport] = useState<any | null>(null);
   const [integrityLoading, setIntegrityLoading] = useState<boolean>(false);
   const [integrityError, setIntegrityError] = useState<string | null>(null);
+
+  // Manual snapshot states
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState<boolean>(false);
+  const [snapshotCreating, setSnapshotCreating] = useState<boolean>(false);
+  const [snapshotRestoring, setSnapshotRestoring] = useState<string | null>(null);
+  const [snapshotDeleting, setSnapshotDeleting] = useState<string | null>(null);
+
+  const loadSnapshots = async () => {
+    if (userRole !== 'Admin') return;
+    setSnapshotsLoading(true);
+    try {
+      const res = await fetch('/api/system/firestore-snapshots', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to load snapshot backups.");
+      }
+      const data = await res.json();
+      setSnapshots(data);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to load cloud snapshot snapshots: " + err.message);
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  };
+
+  const handleCreateSnapshot = async () => {
+    setError(null);
+    setSuccess(null);
+    setSnapshotCreating(true);
+    try {
+      const res = await fetch('/api/system/firestore-snapshots', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        let parsedErr: any;
+        try {
+          parsedErr = JSON.parse(errText);
+        } catch (_) {}
+        throw new Error(parsedErr?.error || errText || "Failed to create manual snapshot.");
+      }
+      const data = await res.json();
+      setSuccess(`Manual cloud Firestore snapshot backup "${data.snapshot.id}" successfully completed!`);
+      toast.success("Firestore snapshot backup created successfully!");
+      loadSnapshots();
+    } catch (err: any) {
+      console.error(err);
+      setError("Manual Firestore snapshot backup failed: " + err.message);
+      toast.error(err.message || "Manual Firestore snapshot backup failed.");
+    } finally {
+      setSnapshotCreating(false);
+    }
+  };
+
+  const handleRestoreSnapshot = async (snapshotId: string) => {
+    const isConfirmed = await confirm({
+      title: "Restore Firestore Snapshot?",
+      message: `Are you absolutely certain you want to restore the snapshot "${snapshotId}"? This will overwrite the current live database state across all collections with the stored snapshot data! This operation cannot be undone.`,
+      confirmText: "Yes, Restore Database State",
+      actionType: 'reset',
+    });
+    if (!isConfirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setSnapshotRestoring(snapshotId);
+    try {
+      const res = await fetch('/api/system/firestore-snapshots/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ snapshotId })
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        let parsedErr: any;
+        try {
+          parsedErr = JSON.parse(errText);
+        } catch (_) {}
+        throw new Error(parsedErr?.error || errText || "Failed to restore manual snapshot.");
+      }
+      setSuccess(`Database successfully restored to snapshot state "${snapshotId}"! All records have been rolled back.`);
+      toast.success("Database restored to snapshot successfully!");
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      setError("Restore snapshot operation failed: " + err.message);
+      toast.error(err.message || "Failed to restore snapshot.");
+    } finally {
+      setSnapshotRestoring(null);
+    }
+  };
+
+  const handleDeleteSnapshot = async (snapshotId: string) => {
+    const isConfirmed = await confirm({
+      title: "Delete Firestore Snapshot?",
+      message: `Are you sure you want to permanently delete the snapshot archive "${snapshotId}" from the backups collection? This file will be lost forever.`,
+      confirmText: "Yes, Delete Document",
+      actionType: 'delete',
+    });
+    if (!isConfirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setSnapshotDeleting(snapshotId);
+    try {
+      const res = await fetch(`/api/system/firestore-snapshots/${snapshotId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to delete snapshot archive.");
+      }
+      toast.success("Snapshot backup deleted successfully!");
+      loadSnapshots();
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to delete snapshot: " + err.message);
+    } finally {
+      setSnapshotDeleting(null);
+    }
+  };
 
   const runIntegrityCheck = async () => {
     setIntegrityLoading(true);
@@ -262,10 +392,13 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
 
   useEffect(() => {
     fetchData();
+    if (userRole === 'Admin') {
+      loadSnapshots();
+    }
     if (getCachedGoogleUser()) {
       fetchGDriveFiles(gShowAllJson, gSearchName);
     }
-  }, [authToken, gShowAllJson]);
+  }, [authToken, gShowAllJson, userRole]);
 
   const handleGDriveLogin = async () => {
     setGLoading(true);
@@ -1747,6 +1880,114 @@ ALTER TABLE sales_portal_data DISABLE ROW LEVEL SECURITY;`}
           )}
         </div>
       </div>
+
+      {/* CLOUD FIRESTORE SNAPS BACKUPS LIST & CONTROL */}
+      {userRole === 'Admin' && (
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-50 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 border border-emerald-100 rounded-xl">
+                <Database className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">Cloud Firestore Snapshot Archives</h2>
+                <p className="text-[11px] text-gray-400">Trigger manual hot-state snapshots and manage system state records in the separate cloud 'backups' collection.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleCreateSnapshot}
+              disabled={snapshotCreating}
+              className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition cursor-pointer select-none whitespace-nowrap"
+            >
+              {snapshotCreating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Creating Snapshot...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Take Manual Snapshot
+                </>
+              )}
+            </button>
+          </div>
+
+          <p className="text-xs text-gray-500 leading-normal">
+            Take instant, unthrottled point-in-time full database backups of the active portal. Stored securely in a dedicated <strong className="text-gray-700 font-semibold">'backups'</strong> collection on Firebase Firestore, these can be deleted or fully rolled back at any time.
+          </p>
+
+          {snapshotsLoading ? (
+            <div className="py-8 flex flex-col items-center justify-center gap-3">
+              <RefreshCw className="w-6 h-6 text-emerald-600 animate-spin" />
+              <p className="text-[10px] text-gray-400 font-medium select-none">Fetching cloud snapshot indexes from Firestore backups collection...</p>
+            </div>
+          ) : snapshots.length === 0 ? (
+            <div className="py-10 border border-dashed border-gray-100 rounded-2xl text-center select-none text-xs text-gray-400 font-medium italic">
+              No cloud snapshots recorded yet. Click "Take Manual Snapshot" above to create your first Firestore backup point.
+            </div>
+          ) : (
+            <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-3xs max-h-80 overflow-y-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none">
+                    <th className="px-4 py-3">Snapshot Reference / Date</th>
+                    <th className="px-4 py-3">Created By</th>
+                    <th className="px-4 py-3 text-right">Data Size</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 bg-white">
+                  {snapshots.map((snap) => {
+                    const formattedDate = new Date(snap.timestamp).toLocaleString();
+                    const sizeKB = snap.size ? (snap.size / 1024).toFixed(2) : '0';
+                    const isRestoring = snapshotRestoring === snap.id;
+                    const isDeleting = snapshotDeleting === snap.id;
+                    
+                    return (
+                      <tr key={snap.id} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+                            <div>
+                              <p className="font-extrabold text-gray-800 tracking-tight break-all">{snap.id}</p>
+                              <span className="text-[10px] text-gray-400 mt-0.5 block">{formattedDate}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-medium text-gray-600 break-all">{snap.createdBy}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-[10px] font-bold text-gray-500">{sizeKB} KB</td>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <div className="inline-flex gap-2">
+                            <button
+                              onClick={() => handleRestoreSnapshot(snap.id)}
+                              disabled={!!snapshotRestoring || !!snapshotDeleting || snapshotCreating}
+                              className="text-emerald-600 hover:text-emerald-700 disabled:opacity-40 text-[10px] font-bold py-1 px-3 bg-emerald-50 hover:bg-emerald-100 rounded-lg cursor-pointer transition select-none inline-flex items-center gap-1"
+                            >
+                              {isRestoring ? (
+                                <RefreshCw className="w-3" />
+                              ) : "Undo/Restore"}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSnapshot(snap.id)}
+                              disabled={!!snapshotRestoring || !!snapshotDeleting || snapshotCreating}
+                              className="text-rose-600 hover:text-rose-700 disabled:opacity-40 text-[10px] font-bold py-1 px-3 bg-rose-50 hover:bg-rose-100 rounded-lg cursor-pointer transition select-none inline-flex items-center gap-1"
+                            >
+                              {isDeleting ? (
+                                <RefreshCw className="w-3" />
+                              ) : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ROLE BASED ACCESS CONTROL SECTION */}
       {userRole === 'Admin' && (
