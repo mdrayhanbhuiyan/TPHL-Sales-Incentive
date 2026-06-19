@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Project, ProjectOnSale } from '../types';
 import { useToast } from './Toast';
+import { useConfirmation } from './ConfirmationDialog';
 
 interface ProjectsOnSaleViewProps {
   authToken: string;
@@ -40,6 +41,7 @@ interface ProjectsOnSaleViewProps {
 
 export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger }: ProjectsOnSaleViewProps) {
   const { toast } = useToast();
+  const { confirm } = useConfirmation();
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,9 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
   const isAdmin = userRole === 'Admin';
 
   const fetchData = async () => {
-    setLoading(true);
+    if (projectsOnSale.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
       // Get projects on sale
@@ -290,7 +294,14 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this pre-sale project? This will clear unit registrations.")) return;
+    const isConfirmed = await confirm({
+      title: 'Delete Pre-Sale Campaign?',
+      message: 'Are you sure you want to delete this pre-sale project? This will clear unit registrations.',
+      confirmText: 'Yes, Delete',
+      cancelText: 'Cancel',
+      actionType: 'delete'
+    });
+    if (!isConfirmed) return;
     try {
       const res = await fetch(`/api/projects-on-sale/${id}`, {
         method: 'DELETE',
@@ -301,12 +312,10 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
         fetchData();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to delete.");
         toast.error(err.error || "Failed to delete pre-sale campaign.");
       }
     } catch (e) {
       console.error(e);
-      alert("Error occurred on deletion.");
       toast.error("An error occurred during deletion.");
     }
   };

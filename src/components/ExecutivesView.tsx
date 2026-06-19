@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { SalesExecutive, SalesTeam, Project } from '../types';
 import { useToast } from './Toast';
+import { useConfirmation } from './ConfirmationDialog';
 
 interface ExecutivesProps {
   authToken: string;
@@ -31,6 +32,7 @@ interface ExecutivesProps {
 
 export default function ExecutivesView({ authToken, userRole, refreshTrigger }: ExecutivesProps) {
   const { toast } = useToast();
+  const { confirm } = useConfirmation();
   const [executives, setExecutives] = useState<any[]>([]);
   const [teams, setTeams] = useState<SalesTeam[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -64,7 +66,9 @@ export default function ExecutivesView({ authToken, userRole, refreshTrigger }: 
   const [success, setSuccess] = useState<string | null>(null);
 
   const fetchData = async () => {
-    setLoading(true);
+    if (executives.length === 0) {
+      setLoading(true);
+    }
     try {
       const eRes = await fetch('/api/executives', {
         headers: { 'Authorization': `Bearer ${authToken}` }
@@ -214,22 +218,25 @@ export default function ExecutivesView({ authToken, userRole, refreshTrigger }: 
     }
   };
 
-  // Custom delete state
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const handleDelete = async (execId: string, execName: string) => {
+    const isConfirmed = await confirm({
+      title: 'Remove Executive Record?',
+      message: (
+        <>
+          Are you sure you want to delete the record for sales executive <span className="font-semibold text-gray-800">'{execName}'</span>? This will clear all historical targets and logs for this executive.
+        </>
+      ),
+      confirmText: 'Yes, Remove',
+      cancelText: 'Cancel',
+      actionType: 'delete'
+    });
+    if (!isConfirmed) return;
 
-  const handleDelete = (execId: string, execName: string) => {
-    setDeleteTarget({ id: execId, name: execName });
-  };
-
-  const confirmDeleteExec = async () => {
-    if (!deleteTarget) return;
-    const { id, name: execName } = deleteTarget;
-    setDeleteTarget(null);
     setError(null);
     setSuccess(null);
 
     try {
-      const res = await fetch(`/api/executives/${id}`, {
+      const res = await fetch(`/api/executives/${execId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
@@ -789,39 +796,7 @@ export default function ExecutivesView({ authToken, userRole, refreshTrigger }: 
           </div>
         </div>
       )}
-      {/* Sleek Custom Confirm Delete Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="w-full max-w-sm bg-white rounded-3xl border border-gray-100 p-6 shadow-xl space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 mx-auto">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-gray-950 text-sm">Delete Executive?</h3>
-              <p className="text-xs text-gray-500">
-                Are you completely sure you want to delete the record for executive <span className="font-semibold text-gray-800">'{deleteTarget.name}'</span>? 
-                This fails if they have active sales logged.
-              </p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold py-2.5 rounded-xl transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteExec}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-md transition"
-              >
-                Yes, Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* 5. DYNAMIC CSV IMPORT MODAL */}
       {isCsvModalOpen && (

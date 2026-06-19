@@ -356,7 +356,9 @@ export default function RulesView({ authToken, userRole, refreshTrigger }: Rules
   };
 
   const fetchRulesAndProjects = async (projIdToLoad?: string) => {
-    setLoading(true);
+    if (projects.length === 0) {
+      setLoading(true);
+    }
     try {
       const pRes = await fetch('/api/projects', {
         headers: { 'Authorization': `Bearer ${authToken}` }

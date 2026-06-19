@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore, collection, onSnapshot } from 'firebase/firestore';
+import { initializeFirestore, collection, onSnapshot, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 let firestoreDb: any = null;
@@ -14,6 +14,12 @@ try {
   firestoreDb = initializeFirestore(app, {
     experimentalForceLongPolling: true
   }, firebaseConfig.firestoreDatabaseId);
+
+  if (typeof window !== 'undefined') {
+    enableIndexedDbPersistence(firestoreDb).catch((err) => {
+      console.warn("[App.tsx] Firestore persistence could not be enabled:", err);
+    });
+  }
 } catch (e) {
   console.warn("[App.tsx] Client firebase connection not initialized:", e);
 }
@@ -50,10 +56,12 @@ import DocsView from './components/DocsView';
 import SettingsView from './components/SettingsView';
 import ProjectsOnSaleView from './components/ProjectsOnSaleView';
 import RegistrationView from './components/RegistrationView';
+import { useToast } from './components/Toast';
 
 type AppRoute = 'dashboard' | 'projects-on-sale' | 'registration' | 'projects' | 'teams' | 'executives' | 'rules' | 'sales' | 'incentives' | 'docs' | 'settings';
 
 export default function App() {
+  const { toast } = useToast();
   const [authToken, setAuthToken] = useState<string | null>('u-admin');
   const [userProfile, setUserProfile] = useState<any | null>({
     id: "u-admin",
@@ -103,6 +111,7 @@ export default function App() {
         if (!isInitialSetup) {
           console.log("[App.tsx] Real-time Firestore update triggered, updating refreshTrigger!");
           setIsSyncing(true);
+          toast.success("Database sync successful! State updated in real-time.");
           setRefreshTrigger(prev => prev + 1);
           setTimeout(() => {
             setIsSyncing(false);

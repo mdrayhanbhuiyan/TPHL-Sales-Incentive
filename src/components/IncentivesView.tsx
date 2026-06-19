@@ -256,7 +256,9 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
   };
 
   const fetchIncentivesAndTeams = async () => {
-    setLoading(true);
+    if (incentives.length === 0) {
+      setLoading(true);
+    }
     try {
       const incRes = await fetch('/api/incentives', {
         headers: { 'Authorization': `Bearer ${authToken}` }

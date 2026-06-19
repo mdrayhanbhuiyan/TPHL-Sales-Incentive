@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Project, SalesExecutive, ProjectOnSale } from '../types';
 import { useToast } from './Toast';
+import { useConfirmation } from './ConfirmationDialog';
 
 interface SalesEntryProps {
   authToken: string;
@@ -34,6 +35,7 @@ interface SalesEntryProps {
 
 export default function SalesEntryView({ authToken, userRole, userProfile, refreshTrigger }: SalesEntryProps) {
   const { toast } = useToast();
+  const { confirm } = useConfirmation();
   const [sales, setSales] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
@@ -307,7 +309,9 @@ export default function SalesEntryView({ authToken, userRole, userProfile, refre
   };
 
   const fetchSalesData = async () => {
-    setLoading(true);
+    if (sales.length === 0) {
+      setLoading(true);
+    }
     try {
       const sRes = await fetch('/api/sales', {
         headers: { 'Authorization': `Bearer ${authToken}` }
@@ -495,21 +499,21 @@ export default function SalesEntryView({ authToken, userRole, userProfile, refre
     }
   };
 
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; unit: string } | null>(null);
+  const handleDelete = async (saleId: string, unit: string) => {
+    const isConfirmed = await confirm({
+      title: 'Cancel Booking Contract?',
+      message: `Are you sure you want to delete unit contract '${unit}'? Chronology numbers will auto recalculate instantly.`,
+      confirmText: 'Yes, Delete',
+      cancelText: 'No, Keep',
+      actionType: 'delete'
+    });
+    if (!isConfirmed) return;
 
-  const handleDelete = (saleId: string, unit: string) => {
-    setDeleteTarget({ id: saleId, unit: unit });
-  };
-
-  const confirmDeleteSale = async () => {
-    if (!deleteTarget) return;
-    const { id, unit } = deleteTarget;
-    setDeleteTarget(null);
     setError(null);
     setSuccess(null);
 
     try {
-      const res = await fetch(`/api/sales/${id}`, {
+      const res = await fetch(`/api/sales/${saleId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
@@ -940,38 +944,7 @@ export default function SalesEntryView({ authToken, userRole, userProfile, refre
         </div>
       )}
 
-      {/* Sleek Custom Confirm Delete Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-sm bg-white rounded-3xl border border-gray-150 p-6 shadow-xl space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-105 flex items-center justify-center text-rose-600 mx-auto">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div className="space-y-1 border-b border-gray-50 pb-2">
-              <h3 className="font-bold text-gray-950 text-sm">Cancel Booking Contract?</h3>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                Delete unit contract <span className="font-semibold text-gray-800">'{deleteTarget.unit}'</span>? Chronology numbers will auto recalculate instantly.
-              </p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
-              >
-                No, Keep
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteSale}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-xs transition cursor-pointer"
-              >
-                Yes, Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* CSV Bulk Import Modal */}
       {isCsvModalOpen && (

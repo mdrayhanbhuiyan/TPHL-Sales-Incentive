@@ -25,6 +25,7 @@ import {
 import { motion } from 'motion/react';
 import { Project } from '../types';
 import { useToast } from './Toast';
+import { useConfirmation } from './ConfirmationDialog';
 
 interface ProjectViewProps {
   authToken: string;
@@ -34,6 +35,7 @@ interface ProjectViewProps {
 
 export default function ProjectView({ authToken, userRole, refreshTrigger }: ProjectViewProps) {
   const { toast } = useToast();
+  const { confirm } = useConfirmation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -260,7 +262,9 @@ export default function ProjectView({ authToken, userRole, refreshTrigger }: Pro
   };
 
   const fetchProjects = () => {
-    setLoading(true);
+    if (projects.length === 0) {
+      setLoading(true);
+    }
     fetch('/api/projects', {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
@@ -374,22 +378,26 @@ export default function ProjectView({ authToken, userRole, refreshTrigger }: Pro
     }
   };
 
-  // Custom delete state
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const handleDelete = async (projId: string, projName: string) => {
+    const isConfirmed = await confirm({
+      title: 'Delete Project?',
+      message: (
+        <>
+          Are you absolutely sure you want to delete project <span className="font-semibold text-gray-800">'{projName}'</span>? 
+          This will also cascadingly delete any associated sales entries and recalculate incentives.
+        </>
+      ),
+      confirmText: 'Yes, Delete',
+      cancelText: 'Cancel',
+      actionType: 'delete'
+    });
+    if (!isConfirmed) return;
 
-  const handleDelete = (projId: string, projName: string) => {
-    setDeleteTarget({ id: projId, name: projName });
-  };
-
-  const confirmDeleteProj = async () => {
-    if (!deleteTarget) return;
-    const { id, name: projName } = deleteTarget;
-    setDeleteTarget(null);
     setError(null);
     setSuccess(null);
 
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await fetch(`/api/projects/${projId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
@@ -851,39 +859,7 @@ export default function ProjectView({ authToken, userRole, refreshTrigger }: Pro
           </div>
         </div>
       )}
-      {/* Sleek Custom Confirm Delete Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="w-full max-w-sm bg-white rounded-3xl border border-gray-100 p-6 shadow-xl space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 mx-auto">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-gray-950 text-sm">Delete Project?</h3>
-              <p className="text-xs text-gray-500">
-                Are you absolutely sure you want to delete project <span className="font-semibold text-gray-800">'{deleteTarget.name}'</span>? 
-                This will also cascadingly delete any associated sales entries and recalculate incentives.
-              </p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold py-2.5 rounded-xl transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteProj}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2.5 rounded-xl shadow-md transition"
-              >
-                Yes, Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* CSV Import Modal */}
       {isCsvModalOpen && (

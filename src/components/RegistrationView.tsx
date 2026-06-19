@@ -246,7 +246,9 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
   };
 
   const fetchInitialData = async () => {
-    setLoading(true);
+    if (projectsOnSale.length === 0) {
+      setLoading(true);
+    }
     setErrorMsg(null);
     try {
       let currentError: string | null = null;

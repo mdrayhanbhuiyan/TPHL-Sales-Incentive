@@ -177,7 +177,12 @@ function handleFirestoreFailure(err: any): void {
   const errMsg = err?.message || String(err);
   if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
     isFirestoreQuotaExceeded = true;
-    console.warn(`[db.ts] Suspending live Firestore synchronization due to quota limits (RESOURCE_EXHAUSTED). STANDBY storage mode is active: ${errMsg}`);
+    if (firestoreDb) {
+      const dbToTerminate = firestoreDb;
+      firestoreDb = null;
+      console.warn(`[db.ts] Disconnecting and terminating Firestore client due to quota limits or write failures (RESOURCE_EXHAUSTED). STANDBY storage mode is active: ${errMsg}`);
+      terminate(dbToTerminate).catch(() => {});
+    }
   } else {
     // For non-quota (such as transient timeouts or network delays), let the system know so it doesn't block, but don't flag as permanently exceeded
     console.warn(`[db.ts] Safe notice: Firestore sync experienced a temporary network latency or transient timeout: ${errMsg}`);
@@ -799,6 +804,7 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
     ];
 
     // --- PARALLEL WRITES OPTIMIZATION ---
+    let anyKeyWritten = false;
     const writePromises = keys.map(async (key) => {
       if (store[key] !== undefined) {
         const sanitized = removeUndefined(store[key]);
@@ -824,6 +830,7 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
             `Firestore write timeout for key ${key}`
           );
           
+          anyKeyWritten = true;
           // Successfully wrote, update hash cache
           try {
             const serialized = JSON.stringify(sanitized);
@@ -844,6 +851,14 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
 
     await Promise.all(writePromises);
 
+    const nowEpoch = Date.now();
+
+    if (!anyKeyWritten) {
+      console.log("[db.ts] Safe bypass: All dataset keys match current hashes. Bypassed redundant metadata save to conserve Spark quota.");
+      lastLocalSyncTime = nowEpoch;
+      return;
+    }
+
     // Determine and write current deployment hash to prevent deployment mismatches on boot
     const setupKeyData = {
       users: store.users,
@@ -860,7 +875,6 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
     const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
 
     // Update metadata document in Firestore with current deployment hash & updated timestamp
-    const nowEpoch = Date.now();
     const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
     try {
       await withTimeout(

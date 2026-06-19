@@ -26,6 +26,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useToast } from './Toast';
+import { useConfirmation } from './ConfirmationDialog';
 import {
   loginToGoogleDrive,
   logoutFromGoogleDrive,
@@ -43,6 +44,7 @@ interface SettingsProps {
 
 export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const { toast } = useToast();
+  const { confirm } = useConfirmation();
   const [logs, setLogs] = useState<any[]>([]);
   const [notifList, setNotifList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,20 +92,7 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   const [indCsvStatsRows, setIndCsvStatsRows] = useState<number | null>(null);
   const [indCsvHeaders, setIndCsvHeaders] = useState<string[]>([]);
 
-  // Custom confirmation modal state to prevent INP blocking
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmText: string;
-    onConfirm: () => void | Promise<void>;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    confirmText: 'Confirm',
-    onConfirm: () => {}
-  });
+
 
   // Live Firebase/Firestore Connection Diagnostics states
   const [diagResults, setDiagResults] = useState<any | null>(null);
@@ -229,7 +218,9 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
   };
 
   const fetchData = async () => {
-    setLoading(true);
+    if (notifList.length === 0) {
+      setLoading(true);
+    }
     try {
       if (userRole === 'Admin') {
         const lRes = await fetch('/api/system/logs', {
@@ -374,56 +365,55 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     reader.readAsText(file);
   };
 
-  const handleRestoreFromGDrive = (fileId: string, fileName: string) => {
-    setConfirmModal({
-      isOpen: true,
+  const handleRestoreFromGDrive = async (fileId: string, fileName: string) => {
+    const isConfirmed = await confirm({
       title: "Restore Backup Confirmation",
       message: `Are you sure you want to restore the backup "${fileName}"? This will COMPLETELY overwrite all active platform database records, remap entity IDs, and run dynamic incentive rate calculations. This operation is irreversible.`,
       confirmText: "Yes, Restore Backup",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        setError(null);
-        setSuccess(null);
-        setGLoading(true);
-        try {
-          const backupContent = await downloadGoogleDriveBackup(fileId);
-
-          const res = await fetch('/api/system/restore', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify(backupContent)
-          });
-
-          if (!res.ok) {
-            let errorMsg = "Server restore transaction failed";
-            try {
-              const errData = await res.json();
-              errorMsg = errData.error || errorMsg;
-            } catch (e) {
-              try {
-                const txt = await res.text();
-                if (txt) errorMsg = txt.slice(0, 150);
-              } catch (_) {}
-            }
-            throw new Error(errorMsg);
-          }
-
-          setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
-          toast.success("Google Drive backup restored successfully!");
-          fetchData();
-          setTimeout(() => window.location.reload(), 1500);
-        } catch (err: any) {
-          console.error(err);
-          setError("Failed to restore backup from Google Drive: " + err.message);
-          toast.error("Failed to restore Google Drive backup.");
-        } finally {
-          setGLoading(false);
-        }
-      }
+      actionType: 'reset',
     });
+    if (!isConfirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setGLoading(true);
+    try {
+      const backupContent = await downloadGoogleDriveBackup(fileId);
+
+      const res = await fetch('/api/system/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(backupContent)
+      });
+
+      if (!res.ok) {
+        let errorMsg = "Server restore transaction failed";
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (e) {
+          try {
+            const txt = await res.text();
+            if (txt) errorMsg = txt.slice(0, 150);
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
+      }
+
+      setSuccess(`Successfully loaded backup "${fileName}" from Google Drive! Reloading system catalogs...`);
+      toast.success("Google Drive backup restored successfully!");
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setError("Failed to restore backup from Google Drive: " + err.message);
+      toast.error("Failed to restore Google Drive backup.");
+    } finally {
+      setGLoading(false);
+    }
   };
 
   const handleBackup = async () => {
@@ -572,65 +562,64 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     reader.readAsText(file);
   };
 
-  const executeLocalImportTransformation = () => {
+  const executeLocalImportTransformation = async () => {
     if (!localFileParsed) {
       toast.error("No valid dataset loaded.");
       return;
     }
 
-    setConfirmModal({
-      isOpen: true,
+    const isConfirmed = await confirm({
       title: "Incorporate Database Snapshot",
       message: `CRITICAL CONFIRMATION: Are you sure you want to restore the local database backup file "${localFileName}"? This will COMPLETELY overwrite all active portal database records, wipe corresponding catalog references, and load new calculation matrices. This cannot be undone.`,
       confirmText: "Yes, Inject Database",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        setError(null);
-        setSuccess(null);
-        setLocalImportLoading(true);
-        try {
-          const res = await fetch('/api/system/restore', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify(localFileParsed)
-          });
-
-          if (!res.ok) {
-            let errorMsg = "Server restore transaction failed";
-            try {
-              const errData = await res.json();
-              errorMsg = errData.error || errorMsg;
-            } catch (e) {
-              try {
-                const txt = await res.text();
-                if (txt) errorMsg = txt.slice(0, 150);
-              } catch (_) {}
-            }
-            throw new Error(errorMsg);
-          }
-
-          setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);
-          toast.success("Database master recovery successfully loaded!");
-          
-          // Clear loaded local preview
-          setLocalFileParsed(null);
-          setLocalFileName('');
-          setLocalFileStats(null);
-
-          fetchData();
-          setTimeout(() => window.location.reload(), 1500);
-        } catch (err: any) {
-          console.error(err);
-          setError("Import transaction failed: " + err.message);
-          toast.error("Import failed.");
-        } finally {
-          setLocalImportLoading(false);
-        }
-      }
+      actionType: 'reset',
     });
+    if (!isConfirmed) return;
+
+    setError(null);
+    setSuccess(null);
+    setLocalImportLoading(true);
+    try {
+      const res = await fetch('/api/system/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(localFileParsed)
+      });
+
+      if (!res.ok) {
+        let errorMsg = "Server restore transaction failed";
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (e) {
+          try {
+            const txt = await res.text();
+            if (txt) errorMsg = txt.slice(0, 150);
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
+      }
+
+      setSuccess(`Direct JSON database import of "${localFileName}" completed successfully! Reloading configuration catalogs...`);
+      toast.success("Database master recovery successfully loaded!");
+      
+      // Clear loaded local preview
+      setLocalFileParsed(null);
+      setLocalFileName('');
+      setLocalFileStats(null);
+
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setError("Import transaction failed: " + err.message);
+      toast.error("Import failed.");
+    } finally {
+      setLocalImportLoading(false);
+    }
   };
 
   const cancelLocalBackupImport = () => {
@@ -733,62 +722,61 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     }
   };
 
-  const executeLocalCSVImport = () => {
+  const executeLocalCSVImport = async () => {
     if (!csvFileContent) {
       toast.error("No valid CSV content loaded.");
       return;
     }
 
-    setConfirmModal({
-      isOpen: true,
+    const isConfirmed = await confirm({
       title: "Incorporate CSV Database Snapshot",
       message: `CRITICAL ACTION: Are you sure you want to restore the local database from CSV snapshot backup "${csvFileName}"? This will COMPLETELY overwrite all active portal database tables, wipe current catalog records, reload configuration profiles, and recalculate commission cascades chronologically. This cannot be undone.`,
       confirmText: "Yes, Inject tables from CSV",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        setCsvImportLoading(true);
-        try {
-          const res = await fetch('/api/system/restore-csv', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/plain',
-              'Authorization': `Bearer ${authToken}`
-            },
-            body: csvFileContent
-          });
-
-          let data: any = {};
-          try {
-            const textResponse = await res.text();
-            try {
-              data = JSON.parse(textResponse);
-            } catch {
-              data = { error: textResponse || `HTTP Error ${res.status}` };
-            }
-          } catch {
-            data = { error: `Network/Server Communication Failure (Status ${res.status})` };
-          }
-
-          if (!res.ok) throw new Error(data.error || "Server CSV restore transaction failed.");
-
-          toast.success("Database restored successfully from CSV tables snapshot!");
-          setSuccess("Overwrote all records and recalculated entire database successfully from CSV tables backup!");
-          
-          setCsvFile(null);
-          setCsvFileName('');
-          setCsvFileContent('');
-          setCsvFileStats(null);
-          
-          fetchData();
-          setTimeout(() => window.location.reload(), 1500);
-        } catch (err: any) {
-          toast.error(err.message || "Failed to import database from CSV.");
-          setCsvFileError(err.message || "Import failed.");
-        } finally {
-          setCsvImportLoading(false);
-        }
-      }
+      actionType: 'reset',
     });
+    if (!isConfirmed) return;
+
+    setCsvImportLoading(true);
+    try {
+      const res = await fetch('/api/system/restore-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: csvFileContent
+      });
+
+      let data: any = {};
+      try {
+        const textResponse = await res.text();
+        try {
+          data = JSON.parse(textResponse);
+        } catch {
+          data = { error: textResponse || `HTTP Error ${res.status}` };
+        }
+      } catch {
+        data = { error: `Network/Server Communication Failure (Status ${res.status})` };
+      }
+
+      if (!res.ok) throw new Error(data.error || "Server CSV restore transaction failed.");
+
+      toast.success("Database restored successfully from CSV tables snapshot!");
+      setSuccess("Overwrote all records and recalculated entire database successfully from CSV tables backup!");
+      
+      setCsvFile(null);
+      setCsvFileName('');
+      setCsvFileContent('');
+      setCsvFileStats(null);
+      
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to import database from CSV.");
+      setCsvFileError(err.message || "Import failed.");
+    } finally {
+      setCsvImportLoading(false);
+    }
   };
 
   const cancelCSVBackupImport = () => {
@@ -895,63 +883,61 @@ export default function SettingsView({ authToken, userRole }: SettingsProps) {
     reader.readAsText(file);
   };
 
-  const executeIndCSVRestore = () => {
+  const executeIndCSVRestore = async () => {
     if (!indCsvContent) {
       toast.error("No valid CSV content loaded.");
       return;
     }
 
-    setConfirmModal({
-      isOpen: true,
+    const isConfirmed = await confirm({
       title: `Overwrite database table: '${selectedTable}'`,
       message: `CRITICAL ACTION: Are you sure you want to completely overwrite table '${selectedTable}' with the contents of "${indCsvFileName}"? This operation is irreversible, will wipe current rows inside this collection, and automatically trigger commission cascade recalculations state-wide in-memory.`,
       confirmText: "Yes, Overwrite & Recalculate Table",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        setIndCsvLoading(true);
-        try {
-          const res = await fetch(`/api/system/restore-table-csv?table=${selectedTable}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/plain',
-              'Authorization': `Bearer ${authToken}`
-            },
-            body: indCsvContent
-          });
-
-          let data: any = {};
-          try {
-            const textResponse = await res.text();
-            try {
-              data = JSON.parse(textResponse);
-            } catch {
-              data = { error: textResponse || `HTTP Error ${res.status}` };
-            }
-          } catch {
-            data = { error: `Network/Server Communication Failure (Status ${res.status})` };
-          }
-
-          if (!res.ok) throw new Error(data.error || `Server Table RESTORE failed.`);
-
-          toast.success(`Successfully restored database table '${selectedTable}'!`);
-          setSuccess(`Wiped and restored table '${selectedTable}' with ${data.count} rows and ran full commission recalculation successfully!`);
-          
-          setIndCsvFileName('');
-          setIndCsvContent('');
-          setIndCsvStatsRows(null);
-          setIndCsvHeaders([]);
-          
-          fetchData();
-          setTimeout(() => window.location.reload(), 1500);
-        } catch (err: any) {
-          toast.error(err.message || "Failed to import table CSV.");
-          setIndCsvError(err.message || "Import failed.");
-        } finally {
-          setIndCsvLoading(false);
-          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        }
-      }
+      actionType: 'reset',
     });
+    if (!isConfirmed) return;
+
+    setIndCsvLoading(true);
+    try {
+      const res = await fetch(`/api/system/restore-table-csv?table=${selectedTable}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: indCsvContent
+      });
+
+      let data: any = {};
+      try {
+        const textResponse = await res.text();
+        try {
+          data = JSON.parse(textResponse);
+        } catch {
+          data = { error: textResponse || `HTTP Error ${res.status}` };
+        }
+      } catch {
+        data = { error: `Network/Server Communication Failure (Status ${res.status})` };
+      }
+
+      if (!res.ok) throw new Error(data.error || `Server Table RESTORE failed.`);
+
+      toast.success(`Successfully restored database table '${selectedTable}'!`);
+      setSuccess(`Wiped and restored table '${selectedTable}' with ${data.count} rows and ran full commission recalculation successfully!`);
+      
+      setIndCsvFileName('');
+      setIndCsvContent('');
+      setIndCsvStatsRows(null);
+      setIndCsvHeaders([]);
+      
+      fetchData();
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to import table CSV.");
+      setIndCsvError(err.message || "Import failed.");
+    } finally {
+      setIndCsvLoading(false);
+    }
   };
 
   const cancelIndCSVRestore = () => {
@@ -2428,36 +2414,7 @@ ALTER TABLE sales_portal_data DISABLE ROW LEVEL SECURITY;`}
         </div>
       </div>
 
-      {/* Custom Confirmation Modal */}
-      {confirmModal.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs transition-all duration-300">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-gray-100 shadow-2xl space-y-4 scale-100 opacity-100 transition-all duration-300">
-            <div className="flex items-start gap-3">
-              <div className="p-3 bg-amber-50 rounded-2xl shrink-0">
-                <ShieldAlert className="w-6 h-6 text-amber-600" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-extrabold text-gray-800">{confirmModal.title}</h3>
-                <p className="text-xs text-gray-500 leading-relaxed font-medium">{confirmModal.message}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5 pt-2">
-              <button
-                onClick={() => confirmModal.onConfirm()}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer transition shadow-xs text-center"
-              >
-                {confirmModal.confirmText}
-              </button>
-              <button
-                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                className="px-4 py-2.5 bg-gray-105 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-xl cursor-pointer transition text-center"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
