@@ -10,7 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { initializeFirestore, doc, getDoc, setDoc, terminate } from 'firebase/firestore';
 
 import { 
   User, 
@@ -166,8 +166,23 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 let cachedStore: DatabaseStore | null = null;
 let supabaseClient: any = null;
 let firestoreDb: any = null;
+let isFirestoreQuotaExceeded = false;
+let lastWrittenDataHashes: Record<string, string> = {};
 let lastLocalSyncTime = 0;
+let lastRemoteSyncCheckTime = 0;
 let activeWritePromises: Promise<any>[] = [];
+
+// Handle Firestore failures, setting quota exceeded flag only if there is a real quota limit exceeded error
+function handleFirestoreFailure(err: any): void {
+  const errMsg = err?.message || String(err);
+  if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+    isFirestoreQuotaExceeded = true;
+    console.warn(`[db.ts] Suspending live Firestore synchronization due to quota limits (RESOURCE_EXHAUSTED). STANDBY storage mode is active: ${errMsg}`);
+  } else {
+    // For non-quota (such as transient timeouts or network delays), let the system know so it doesn't block, but don't flag as permanently exceeded
+    console.warn(`[db.ts] Safe notice: Firestore sync experienced a temporary network latency or transient timeout: ${errMsg}`);
+  }
+}
 
 // Initialize Firebase Firestore client safely with config
 try {
@@ -775,7 +790,7 @@ async function processWriteQueue(): Promise<void> {
 
 // Synchronize full database state to Firebase Firestore safely
 async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
-  if (!firestoreDb) return;
+  if (!firestoreDb || isFirestoreQuotaExceeded) return;
   try {
     const keys: (keyof DatabaseStore)[] = [
       'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
@@ -783,13 +798,51 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
       'notifications', 'projectsOnSale', 'unitRegistrations', 'rolePermissions'
     ];
 
-    for (const key of keys) {
+    // --- PARALLEL WRITES OPTIMIZATION ---
+    const writePromises = keys.map(async (key) => {
       if (store[key] !== undefined) {
         const sanitized = removeUndefined(store[key]);
+        
+        // --- DIFFERENTIAL WRITE OPTIMIZATION ---
+        let shouldSkip = false;
+        try {
+          const serialized = JSON.stringify(sanitized);
+          const currentKeyHash = crypto.createHash('md5').update(serialized).digest('hex');
+          if (lastWrittenDataHashes[key] === currentKeyHash) {
+            // Already matches, skip writing! Conserves writes and prevents RESOURCE_EXHAUSTED
+            shouldSkip = true;
+          }
+        } catch (_) {}
+
+        if (shouldSkip) return;
+
         const docRef = doc(firestoreDb, 'sales_portal_data', key);
-        await setDoc(docRef, { data: sanitized });
+        try {
+          await withTimeout(
+            setDoc(docRef, { data: sanitized }),
+            15000,
+            `Firestore write timeout for key ${key}`
+          );
+          
+          // Successfully wrote, update hash cache
+          try {
+            const serialized = JSON.stringify(sanitized);
+            lastWrittenDataHashes[key] = crypto.createHash('md5').update(serialized).digest('hex');
+          } catch (_) {}
+        } catch (err: any) {
+          const errMsg = err.message || String(err);
+          if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+            console.warn(`[db.ts] Firestore write failed due to quota limit for key ${key}: ${errMsg}.`);
+            handleFirestoreFailure(err);
+          } else {
+            // Transient timeout or other network delay, log but do NOT throw or trigger permanent deactivation
+            console.warn(`[db.ts] Firestore sync delay for key ${key}: ${errMsg}. Retrying on next interaction.`);
+          }
+        }
       }
-    }
+    });
+
+    await Promise.all(writePromises);
 
     // Determine and write current deployment hash to prevent deployment mismatches on boot
     const setupKeyData = {
@@ -809,10 +862,26 @@ async function saveStoreToFirestore(store: DatabaseStore): Promise<void> {
     // Update metadata document in Firestore with current deployment hash & updated timestamp
     const nowEpoch = Date.now();
     const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
-    await setDoc(metaRef, { 
-      deploymentHash: currentLocalHash, 
-      lastUpdatedAt: nowEpoch 
-    });
+    try {
+      await withTimeout(
+        setDoc(metaRef, { 
+          deploymentHash: currentLocalHash, 
+          lastUpdatedAt: nowEpoch 
+        }),
+        15000,
+        "Firestore write timeout for metadata"
+      );
+    } catch (err: any) {
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+        console.warn(`[db.ts] Firestore metadata write failed due to quota: ${errMsg}.`);
+        handleFirestoreFailure(err);
+        return;
+      } else {
+        console.warn(`[db.ts] Firestore sync delay for metadata: ${errMsg}. Retrying on next interaction.`);
+        return;
+      }
+    }
 
     // Match our local sync timestamp so we don't redundantly re-pull our own write
     lastLocalSyncTime = nowEpoch;
@@ -860,7 +929,7 @@ async function writeStoreToFirestore(store: DatabaseStore): Promise<void> {
 
 // Pull keys from Firebase Firestore directly to our memory cache
 export async function pullFromFirestore(): Promise<void> {
-  if (!firestoreDb) return;
+  if (!firestoreDb || isFirestoreQuotaExceeded) return;
   const keys: (keyof DatabaseStore)[] = [
     'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
     'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
@@ -875,7 +944,7 @@ export async function pullFromFirestore(): Promise<void> {
       const docRef = doc(firestoreDb, 'sales_portal_data', key);
       const docSnap = await withTimeout<any>(
         getDoc(docRef),
-        4000,
+        15000,
         `Firestore load timeout for key ${key}`
       );
       if (docSnap.exists()) {
@@ -883,6 +952,12 @@ export async function pullFromFirestore(): Promise<void> {
         if (fileData && fileData.data !== undefined) {
           tempStore[key] = fileData.data;
           loadedFromFirebase = true;
+          
+          // Seed the local differential hash cache so we don't redundantly write back pulled collections
+          try {
+            const dataStr = JSON.stringify(fileData.data);
+            lastWrittenDataHashes[key] = crypto.createHash('md5').update(dataStr).digest('hex');
+          } catch (_) {}
         }
       }
     } catch (err: any) {
@@ -916,16 +991,25 @@ export async function pullFromFirestore(): Promise<void> {
 
 // Active synchronisation with Firebase Firestore on every request (Vercel-safe)
 export async function syncWithFirestoreIfNeeded(): Promise<void> {
-  if (!firestoreDb) return;
+  if (!firestoreDb || isFirestoreQuotaExceeded) return;
+  
+  // Throttle metadata check to at most once every 10 seconds to guard daily Spark quota and maximize page speed
+  const now = Date.now();
+  if (now - lastRemoteSyncCheckTime < 10000) {
+    return;
+  }
+  lastRemoteSyncCheckTime = now;
+
   try {
     const metaRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
     let storedHash = "";
     let lastRemoteUpdate = 0;
+    let metadataFetchSuccessful = false;
 
     try {
       const metaSnap = await withTimeout<any>(
         getDoc(metaRef),
-        3000,
+        15000,
         "Firestore metadata load timeout"
       );
       if (metaSnap.exists()) {
@@ -933,8 +1017,9 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
         storedHash = metaData?.deploymentHash || "";
         lastRemoteUpdate = Number(metaData?.lastUpdatedAt) || 0;
       }
+      metadataFetchSuccessful = true;
     } catch (err: any) {
-      console.log("[db.ts] Safe metadata read notice:", err.message || err);
+      console.log("[db.ts] Safe metadata read notice (will skip deploy overwrite to avoid overwriting during transient connection delays):", err.message || err);
     }
 
     if (!cachedStore) {
@@ -957,7 +1042,7 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
     const currentLocalHash = crypto.createHash('sha1').update(JSON.stringify(setupKeyData)).digest('hex');
 
     // 2. Hash Mismatch: New Vercel Deployment with code updates or updated CSV setup has run!
-    if (currentLocalHash !== storedHash) {
+    if (metadataFetchSuccessful && currentLocalHash !== storedHash) {
       console.log(`[db.ts] New deployment detected (local: ${currentLocalHash}, remote: ${storedHash}). Overwriting Firebase database state with Vercel preloaded/updated files...`);
       
       // Seed/Recalculate everything to prepare fresh dataset
@@ -965,14 +1050,8 @@ export async function syncWithFirestoreIfNeeded(): Promise<void> {
       
       // Save it directly to Firestore
       await saveStoreToFirestore(cachedStore);
-      
-      // Record new deployment details in Firestore metadata
-      const nowEpoch = Date.now();
-      await setDoc(metaRef, { deploymentHash: currentLocalHash, lastUpdatedAt: nowEpoch });
-      lastLocalSyncTime = nowEpoch;
-      console.log("[db.ts] Vercel-deployed data successfully propagated to Firebase Firestore!");
     } else {
-      // 3. Hashes match: Operational mode. If the remote was modified by transactions, pull them!
+      // 3. Hashes match or metadata fetch failed: Operational mode. If the remote was modified by transactions, pull them!
       if (lastRemoteUpdate > lastLocalSyncTime) {
         console.log(`[db.ts] In-memory cache is cold (local: ${lastLocalSyncTime}, remote: ${lastRemoteUpdate}). Pulling latest active transactions from Firebase Firestore...`);
         await pullFromFirestore();
@@ -993,89 +1072,105 @@ export async function initFirestore(): Promise<void> {
     cachedStore = loadStoreFromCSV();
     console.log("[db.ts] Local CSV files successfully imported and cached in memory!");
 
-    // Check and sync database from Firebase Firestore
-    if (firestoreDb) {
-      await syncWithFirestoreIfNeeded();
-    }
-
-    if (supabaseClient) {
-      console.log("[db.ts] Fetching state from Supabase to synchronize database...");
+    // Run remote synchronisation, healing, and persistent saving in background so it does not block the server startup or cause TCP probe failures.
+    (async () => {
       try {
-        const keys: (keyof DatabaseStore)[] = [
-          'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
-          'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
-          'notifications', 'projectsOnSale', 'unitRegistrations'
-        ];
-        
-        let loadedFromSupabase = false;
-        const tempStore: any = {};
-        
-        const { data: records, error } = await withTimeout<any>(
-          supabaseClient
-            .from('sales_portal_data')
-            .select('key, data'),
-          6000,
-          "Supabase load batch query timeout"
-        );
-        
-        if (error) {
-          console.warn("[db.ts] Supabase batch query encountered an error during boot synchronization:", error.message || error);
-          if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
-            console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
-          }
-        } else if (records && Array.isArray(records)) {
-          for (const row of records) {
-            if (row && row.key && row.data !== undefined && row.data !== null) {
-              tempStore[row.key] = row.data;
-              loadedFromSupabase = true;
-            }
+        // 1. Check and sync database from Firebase Firestore
+        if (firestoreDb && !isFirestoreQuotaExceeded) {
+          try {
+            await syncWithFirestoreIfNeeded();
+          } catch (err: any) {
+            console.error("[db.ts] Firestore sync failed in background:", err.message || err);
           }
         }
-        
-        if (loadedFromSupabase && cachedStore) {
-          for (const key of keys) {
-            if (tempStore[key] !== undefined && tempStore[key] !== null) {
-              if (key === 'bonusRules') {
-                if (tempStore.bonusRules && typeof tempStore.bonusRules === 'object') {
-                  cachedStore.bonusRules = tempStore.bonusRules;
-                } else {
-                  console.warn(`[db.ts] Supabase key 'bonusRules' structure was invalid, keeping local pre-loaded fallback.`);
-                }
-              } else {
-                if (Array.isArray(tempStore[key])) {
-                  (cachedStore as any)[key] = tempStore[key];
-                } else {
-                  console.warn(`[db.ts] Supabase table record for key '${key}' was not returned as a valid array. Skipping key override to preserve core schema integrity.`);
+
+        // 2. Check and sync database from Supabase
+        if (supabaseClient) {
+          console.log("[db.ts] Fetching state from Supabase to synchronize database (background)...");
+          try {
+            const keys: (keyof DatabaseStore)[] = [
+              'users', 'projects', 'salesTeams', 'teamProjects', 'salesExecutives',
+              'incentiveRules', 'bonusRules', 'sales', 'salesIncentives', 'auditLogs',
+              'notifications', 'projectsOnSale', 'unitRegistrations'
+            ];
+            
+            let loadedFromSupabase = false;
+            const tempStore: any = {};
+            
+            const { data: records, error } = await withTimeout<any>(
+              supabaseClient
+                .from('sales_portal_data')
+                .select('key, data'),
+              6000,
+              "Supabase load batch query timeout"
+            );
+            
+            if (error) {
+              console.warn("[db.ts] Supabase batch query encountered an error during boot synchronization:", error.message || error);
+              if (error.message && error.message.includes('relation "sales_portal_data" does not exist')) {
+                console.warn('[db.ts] Action Required: Table "sales_portal_data" missing in your Supabase database. Please open Supabase SQL Editor and run: \nCREATE TABLE sales_portal_data (key text PRIMARY KEY, data jsonb);');
+              }
+            } else if (records && Array.isArray(records)) {
+              for (const row of records) {
+                if (row && row.key && row.data !== undefined && row.data !== null) {
+                  tempStore[row.key] = row.data;
+                  loadedFromSupabase = true;
                 }
               }
             }
+            
+            if (loadedFromSupabase && cachedStore) {
+              for (const key of keys) {
+                if (tempStore[key] !== undefined && tempStore[key] !== null) {
+                  if (key === 'bonusRules') {
+                    if (tempStore.bonusRules && typeof tempStore.bonusRules === 'object') {
+                      cachedStore.bonusRules = tempStore.bonusRules;
+                    } else {
+                      console.warn(`[db.ts] Supabase key 'bonusRules' structure was invalid, keeping local pre-loaded fallback.`);
+                    }
+                  } else {
+                    if (Array.isArray(tempStore[key])) {
+                      (cachedStore as any)[key] = tempStore[key];
+                    } else {
+                      console.warn(`[db.ts] Supabase table record for key '${key}' was not returned as a valid array. Skipping key override to preserve core schema integrity.`);
+                    }
+                  }
+                }
+              }
+              console.log("[db.ts] Successfully synchronized and adopted production dataset from Supabase!");
+            } else {
+              console.log("[db.ts] No previous data found in Supabase. Supabase database is clean or table is empty.");
+            }
+          } catch (err: any) {
+            console.warn("[db.ts] Gracefully bypassed Supabase read sync on boot:", err.message || err);
           }
-          console.log("[db.ts] Successfully synchronized and adopted production dataset from Supabase!");
-        } else {
-          console.log("[db.ts] No previous data found in Supabase. Supabase database is clean or table is empty.");
         }
-      } catch (err: any) {
-        console.warn("[db.ts] Gracefully bypassed Supabase read sync on boot:", err.message || err);
+
+        // 3. Perform migrations if needed
+        if (cachedStore && cachedStore.salesExecutives) {
+          cachedStore.salesExecutives.forEach((exec: any) => {
+            if (exec.target > 1000) {
+              if (exec.id === "exec-rahim") exec.target = 3;
+              else if (exec.id === "exec-karim") exec.target = 2;
+              else if (exec.id === "exec-sultana") exec.target = 2;
+              else exec.target = Math.max(Math.round(exec.target / 500000), 2);
+            }
+          });
+        }
+
+        // 4. Always run calculation, cleaning & auto-healing sequence on startup to guarantee fully populated unit grids.
+        if (cachedStore) {
+          recalculateAllIncentivesDirect(cachedStore);
+        }
+
+        // 5. Save the synced, migrated, and healed memory state back to persistent storage fallback path
+        if (cachedStore) {
+          await writeStoreToFirestore(cachedStore);
+        }
+      } catch (backgroundErr: any) {
+        console.error("[db.ts] Error in background database sync and initialization:", backgroundErr.message || backgroundErr);
       }
-    }
-
-    // Perform migrations or syncs if needed
-    let migrated = false;
-    cachedStore.salesExecutives.forEach((exec: any) => {
-      if (exec.target > 1000) {
-        if (exec.id === "exec-rahim") exec.target = 3;
-        else if (exec.id === "exec-karim") exec.target = 2;
-        else if (exec.id === "exec-sultana") exec.target = 2;
-        else exec.target = Math.max(Math.round(exec.target / 500000), 2);
-        migrated = true;
-      }
-    });
-
-    // Always run calculation, cleaning & auto-healing sequence on startup to guarantee fully populated unit grids.
-    recalculateAllIncentivesDirect(cachedStore);
-
-    // Save the synced, migrated, and healed memory state back to persistent storage (Firestore/Supabase/local fallback path)
-    await writeStoreToFirestore(cachedStore);
+    })();
   } catch (err) {
     console.error("[db.ts] Error pre-loading from CSV database:", err);
     cachedStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
@@ -1563,16 +1658,34 @@ export async function getFirebaseDiagnostics(): Promise<any> {
     try {
       // Test read/query connectivity on metadata instead of writing to connection_test on every diagnostics call
       const testDocRef = doc(firestoreDb, 'sales_portal_data', 'metadata');
-      const testSnap = await getDoc(testDocRef);
+      const testSnap = await withTimeout<any>(
+        getDoc(testDocRef),
+        12000,
+        "Diagnostics metadata read timeout"
+      );
       
+      // Successfully queried! Automatically heal and reset the quota warning/deactivation state
+      isFirestoreQuotaExceeded = false;
       connectionStatus = 'success';
       connectionMessage = 'Live Firebase Firestore database connected and tested successfully! All records sync in real-time.';
       connectionRecommendation = 'Everything is fully active and working!';
     } catch (err: any) {
-      connectionStatus = 'failed';
-      connectionMessage = `Failed to query Firebase Firestore: ${err.message || err}`;
-      connectionRecommendation = 'Ensure that your firestore.rules allow read/write access to collection "sales_portal_data" and check console logs for quota/auth issues.';
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded') || errMsg.includes('resource-exhausted')) {
+        isFirestoreQuotaExceeded = true;
+        connectionStatus = 'quota-exceeded';
+        connectionMessage = 'CRITICAL WARNING: Firebase Firestore Quota Exceeded (RESOURCE_EXHAUSTED). The Spark plan daily free tier write metric limits have been reached. Database is locked and operating in robust Standby/Fallback CSV storage mode.';
+        connectionRecommendation = 'The daily free quota resets every day. You may also upgrade your Firestore database plan to Standard/Pay-as-you-go or check Firebase usage under Spark plan limits.';
+      } else {
+        connectionStatus = 'failed';
+        connectionMessage = `Failed to query Firebase Firestore: ${errMsg}`;
+        connectionRecommendation = 'Ensure that your firestore.rules allow read/write access to collection "sales_portal_data" and check console logs for quota/auth issues.';
+      }
     }
+  } else if (isFirestoreQuotaExceeded) {
+    connectionStatus = 'quota-exceeded';
+    connectionMessage = 'CRITICAL WARNING: Firebase Firestore Quota Exceeded (RESOURCE_EXHAUSTED). The Spark plan daily free tier write metric limits have been reached. Database is locked and operating in robust Standby/Fallback CSV storage mode.';
+    connectionRecommendation = 'The daily free quota resets every day. You may also upgrade your Firestore database plan to Standard/Pay-as-you-go or check Firebase usage under Spark plan limits.';
   }
 
   const configExists = fs.existsSync(path.join(process.cwd(), 'firebase-applet-config.json'));
