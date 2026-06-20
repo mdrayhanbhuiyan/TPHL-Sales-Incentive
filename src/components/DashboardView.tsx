@@ -21,7 +21,8 @@ import {
   Star,
   Target,
   Medal,
-  Database
+  Database,
+  Flame
 } from 'lucide-react';
 import ExecutiveIncentiveChart from './ExecutiveIncentiveChart';
 
@@ -54,6 +55,29 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
   const [sandboxValue, setSandboxValue] = useState<number>(12000000); // 1.2 Crore BDT
   const [sandboxSeq, setSandboxSeq] = useState<number>(1);
   const [sandboxFloor, setSandboxFloor] = useState<'mid' | 'first' | 'top'>('mid');
+
+  const isExec = userRole === 'Sales Executive';
+
+  const [trackExecId, setTrackExecId] = useState<string>('');
+  const [trackProjId, setTrackProjId] = useState<string>('');
+
+  // Set default tracked executive and campaign project for incentive progress meter
+  useEffect(() => {
+    if (data?.executiveProfile?.id) {
+      setTrackExecId(data.executiveProfile.id);
+    } else if (Array.isArray(data?.execAchievements) && data.execAchievements.length > 0) {
+      setTrackExecId(data.execAchievements[0].id);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (trackExecId && Array.isArray(data?.execAchievements)) {
+      const selected = data.execAchievements.find((e: any) => e.id === trackExecId);
+      if (selected) {
+        setTrackProjId(selected.project_id || '');
+      }
+    }
+  }, [trackExecId, data]);
 
   // Load rules config for precise math in our emulator
   useEffect(() => {
@@ -370,133 +394,620 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
         <>
           {/* Top Cards Grid */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Card 1: Total Sales */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 tracking-wider uppercase">Project Sales</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <TrendingUp className="w-4 h-4" />
+            {/* Card 1: Sales Count */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3 relative overflow-hidden group">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 dark:text-slate-400 tracking-wider uppercase">
+                  {isExec ? "My Bookings" : "Project Sales"}
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {isExec 
+                    ? `${data?.executiveProfile?.achieved ?? 0} Units` 
+                    : `${cards?.totalSales ?? 0} Units`}
+                </h3>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold">
+                  {isExec 
+                    ? "My recorded flat bookings" 
+                    : `Vol: ${((cards?.totalSalesValue ?? 0) / 100000).toFixed(1)} Lakh BDT`}
+                </p>
+              </div>
+              <div className="absolute top-2 right-2 w-48 h-48 bg-indigo-50 dark:bg-indigo-950/10 rounded-full -mr-20 -mt-20 opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" />
+            </div>
+
+            {/* Card 2: Incentive Total */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3 relative overflow-hidden group">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 dark:text-slate-400 tracking-wider uppercase">
+                  {isExec ? "My Incentive" : "Incentive Total"}
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <Coins className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-emerald-650 dark:text-emerald-400">
+                  {isExec 
+                    ? `${(data?.executiveProfile?.totalIncentiveBDT ?? 0).toLocaleString()} BDT` 
+                    : `${(cards?.totalIncentivePaid ?? 0).toLocaleString()} BDT`}
+                </h3>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold">
+                  {isExec ? "My cumulative payout earnings" : "Base + Floor + Targets"}
+                </p>
+              </div>
+              <div className="absolute top-2 right-2 w-48 h-48 bg-emerald-50 dark:bg-emerald-950/10 rounded-full -mr-20 -mt-20 opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" />
+            </div>
+
+            {/* Card 3: Teams / Targets */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 dark:text-slate-400 tracking-wider uppercase">
+                  {isExec ? "Quota Goal" : "Teams Active"}
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {isExec 
+                    ? `${data?.executiveProfile?.target ?? 0} Units` 
+                    : `${cards?.totalTeamsCount ?? 0} Teams`}
+                </h3>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold">
+                  {isExec ? "My assigned sales target quota" : "Multi-project bindings"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 4: Expected Share Volume */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 dark:text-slate-400 tracking-wider uppercase">
+                  {isExec ? "Target Volume" : "Executives"}
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 flex items-center justify-center text-rose-600 dark:text-rose-400">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {isExec 
+                    ? `${((data?.executiveProfile?.expectedVolumeBDT ?? 0) / 100000).toFixed(1)} Lakh` 
+                    : `${cards?.totalExecutivesCount ?? 0} Officers`}
+                </h3>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold">
+                  {isExec ? "Share value supposed to sell" : "Registered Member profiles"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 5: Realized Volume / Active Sites */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 dark:text-slate-400 tracking-wider uppercase">
+                  {isExec ? "Value Realized" : "Projects"}
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <FolderHeart className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {isExec 
+                    ? `${((data?.executiveProfile?.totalVolumeBDT ?? 0) / 100000).toFixed(1)} Lakh` 
+                    : `${cards?.activeProjectsCount ?? 0} Site Units`}
+                </h3>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold">
+                  {isExec ? "My total sales value sold" : "Active development assets"}
+                </p>
+              </div>
             </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-bold text-gray-900">{(cards?.totalSales ?? 0)} Units</h3>
-            <p className="text-[10px] text-gray-500 font-medium">Vol: {((cards?.totalSalesValue ?? 0) / 100000).toFixed(1)} Lakh BDT</p>
-          </div>
-          <div className="absolute top-2 right-2 w-48 h-48 bg-indigo-50 rounded-full -mr-20 -mt-20 opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" />
-        </div>
 
-        {/* Card 2: Total Incentive */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3 relative overflow-hidden group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 tracking-wider uppercase">Incentive Total</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <Coins className="w-4 h-4" />
+          {/* Automated Incentive Tier Progress Tracker */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 space-y-6 shadow-xs mt-6">
+            {/* Header with Title and Interactivity */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">
+                  <Crown className="w-4 h-4 text-amber-500 animate-pulse" />
+                  <span>Interactive Incentive Tier Tracker</span>
+                </div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1">Progressive Commission Slab Stepper</h3>
+                <p className="text-xs text-gray-400 dark:text-slate-400">
+                  Trace real-time progress towards higher commission rates based on chronological sales sequence count.
+                </p>
+              </div>
+
+              {/* Dropdowns for tracking */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Executive Selector (Admin/Leader only) */}
+                {!isExec && Array.isArray(data?.execAchievements) && data.execAchievements.length > 0 && (
+                  <div className="flex flex-col">
+                    <label className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1 font-mono">Select Executive</label>
+                    <select
+                      value={trackExecId}
+                      onChange={(e) => setTrackExecId(e.target.value)}
+                      className="text-xs font-semibold bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-gray-800 dark:text-white"
+                    >
+                      {data.execAchievements.map((exec: any) => (
+                        <option key={exec.id} value={exec.id}>{exec.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Project Selector */}
+                {projectData.length > 0 && (
+                  <div className="flex flex-col">
+                    <label className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1 font-mono">Select Campaign Project</label>
+                    <select
+                      value={trackProjId}
+                      onChange={(e) => setTrackProjId(e.target.value)}
+                      className="text-xs font-semibold bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none max-w-[200px] text-gray-800 dark:text-white"
+                    >
+                      {projectData.map((proj: any) => (
+                        <option key={proj.id} value={proj.id}>
+                          🏢 {proj.name || proj.project_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Mathematical analysis of current status */}
+            {(() => {
+              // 1. Resolve selected executive
+              const activeExec = Array.isArray(data?.execAchievements) 
+                ? data.execAchievements.find((e: any) => e.id === trackExecId) 
+                : null;
+
+              if (!activeExec) {
+                return (
+                  <div className="text-center py-6 text-xs text-gray-450 dark:text-slate-550">
+                    Select a teammate or project above to load progressive slab tracker.
+                  </div>
+                );
+              }
+
+              // 2. Resolve count of sales for this project
+              const salesCount = activeExec.salesByProject?.[trackProjId] ?? 0;
+
+              // 3. Resolve active rule for selected project
+              const pRules = Array.isArray(systemRules?.projectRules) ? systemRules.projectRules : [];
+              const activeRule = pRules.find((r: any) => r.project_id === trackProjId);
+
+              // Progressive slabs mapping
+              const sale_1 = activeRule?.sale_1_percent ?? 1.5;
+              const sale_2 = activeRule?.sale_2_percent ?? 1.8;
+              const sale_3 = activeRule?.sale_3_percent ?? 2.0;
+              const sale_4 = activeRule?.sale_4_percent ?? 2.2;
+              const sale_5 = activeRule?.sale_5_percent ?? 2.5;
+              const sale_6 = activeRule?.sale_6_percent ?? 2.8;
+              const sale_7 = activeRule?.sale_7_percent ?? 3.0;
+
+              const slabRates = [sale_1, sale_2, sale_3, sale_4, sale_5, sale_6, sale_7];
+
+              // Determine current rate unlocked
+              let currentRate = 0;
+              let nextRate = sale_1;
+              let rateUnlockedText = "0% (No Sales Completed)";
+
+              if (salesCount >= 1) {
+                currentRate = slabRates[Math.min(salesCount - 1, 6)];
+                rateUnlockedText = `${currentRate.toFixed(2)}% (Slab #${Math.min(salesCount, 7)}${salesCount >= 7 ? '+' : ''})`;
+              }
+              
+              const isPeakReached = salesCount >= 7;
+              if (!isPeakReached) {
+                nextRate = slabRates[Math.min(salesCount, 6)];
+              } else {
+                nextRate = currentRate;
+              }
+
+              // Layout configuration nodes
+              const steps = [
+                { num: 1, title: "1st Sale", rate: sale_1 },
+                { num: 2, title: "2nd Sale", rate: sale_2 },
+                { num: 3, title: "3rd Sale", rate: sale_3 },
+                { num: 4, title: "4th Sale", rate: sale_4 },
+                { num: 5, title: "5th Sale", rate: sale_5 },
+                { num: 6, title: "6th Sale", rate: sale_6 },
+                { num: 7, title: "Peak (7th+)", rate: sale_7 },
+              ];
+
+              return (
+                <div className="space-y-6">
+                  {/* Statistics Blocks */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50/50 dark:bg-slate-950/40 border border-gray-100 dark:border-slate-850 p-5 rounded-2xl">
+                    {/* Block 1: Sales Recorded */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase font-mono tracking-wider">Campaign Sales Count</span>
+                      <p className="text-lg font-black text-gray-900 dark:text-white font-mono flex items-center gap-1.5">
+                        <span>{salesCount} Units</span>
+                        <span className="text-xs font-semibold text-gray-400 dark:text-slate-500">sold in site</span>
+                      </p>
+                    </div>
+
+                    {/* Block 2: Commission rate */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase font-mono tracking-wider">Active Commission Tier</span>
+                      <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                        {rateUnlockedText}
+                      </p>
+                    </div>
+
+                    {/* Block 3: Distance to next */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase font-mono tracking-wider">Next Target Milestone</span>
+                      <p className="text-xs text-gray-700 dark:text-slate-300 font-bold leading-relaxed">
+                        {isPeakReached ? (
+                          <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-mono font-black animate-pulse">
+                            👑 PEAK TIER UNLOCKED!
+                          </span>
+                        ) : (
+                          <>
+                            Earn <span className="text-indigo-600 dark:text-indigo-400 text-sm font-black font-mono">{nextRate.toFixed(2)}%</span> ({salesCount === 0 ? "initial slab" : `+${(nextRate - currentRate).toFixed(2)}% rate rise`}) on your <span className="font-extrabold text-gray-900 dark:text-white">next flat sale</span>!
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Stepper Node Visual Pipeline */}
+                  <div className="relative pt-4 pb-2 px-1">
+                    {/* Connector Lane Background Line */}
+                    <div className="absolute top-[34px] left-8 right-8 h-1 bg-gray-150 dark:bg-slate-800 rounded-full" />
+                    
+                    {/* Highlighted Finished Progress Connector Lane */}
+                    <div 
+                      className="absolute top-[34px] left-8 h-1 bg-gradient-to-r from-emerald-500 to-indigo-500 rounded-full transition-all duration-500 origin-left"
+                      style={{ 
+                        width: `${Math.min(
+                          (Math.max(salesCount - 1, 0) / 6) * 100, 
+                          100
+                        )}%` 
+                      }} 
+                    />
+
+                    {/* Step circles */}
+                    <div className="relative flex justify-between items-center z-10">
+                      {steps.map((st, idx) => {
+                        const isUnlocked = salesCount >= st.num;
+                        const isActiveNext = salesCount === st.num - 1;
+
+                        return (
+                          <div key={st.num} className="flex flex-col items-center space-y-3 group">
+                            {/* Step label/rate indicator above */}
+                            <div className={`text-[11px] font-extrabold font-mono transition duration-200 flex flex-col items-center ${
+                              isUnlocked 
+                                ? 'text-emerald-600 dark:text-emerald-400' 
+                                : isActiveNext 
+                                  ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-black' 
+                                  : 'text-gray-400 dark:text-slate-500'
+                            }`}>
+                              <span>{st.rate.toFixed(2)}%</span>
+                            </div>
+
+                            {/* Step ball node */}
+                            <div 
+                              className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition duration-300 relative ${
+                                isUnlocked 
+                                  ? 'bg-emerald-50 border-emerald-500 text-emerald-600 dark:bg-emerald-950/45 dark:border-emerald-500 shadow-sm shadow-emerald-500/10' 
+                                  : isActiveNext 
+                                    ? 'bg-indigo-50 border-indigo-600 text-indigo-700 dark:bg-indigo-950/80 dark:border-indigo-500 scale-110 shadow-md shadow-indigo-500/20 ring-4 ring-indigo-500/10 animate-pulse' 
+                                    : 'bg-white border-gray-200 text-gray-400 dark:bg-slate-900 dark:border-slate-800'
+                              }`}
+                            >
+                              {isUnlocked ? (
+                                <span className="text-xs font-black">✓</span>
+                              ) : (
+                                <span className="text-[10px] font-black font-mono">{st.num}</span>
+                              )}
+
+                              {/* Active next small flashing dot */}
+                              {isActiveNext && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-450 bg-indigo-450 bg-indigo-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Short text description below */}
+                            <div className="text-center">
+                              <p className={`text-[10px] font-bold ${
+                                isUnlocked 
+                                  ? 'text-gray-900 dark:text-white' 
+                                  : isActiveNext 
+                                    ? 'text-indigo-600 dark:text-indigo-405 dark:text-indigo-400 font-extrabold' 
+                                    : 'text-gray-400 dark:text-slate-500'
+                              }`}>
+                                {st.title}
+                              </p>
+                              {isActiveNext && (
+                                <span className="inline-block bg-indigo-50 dark:bg-indigo-950/50 text-[8px] font-extrabold text-indigo-650 dark:text-indigo-450 dark:text-indigo-400 uppercase tracking-widest px-1 py-0.5 rounded-sm mt-0.5 animate-pulse">
+                                  Active Target
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+      {/* Dynamic Star Metrics Bento-Grid or Sales Executive Personal Workspace Portfolio */}
+      {isExec ? (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 border-l-4 border-emerald-500 pl-3">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">My Professional Profile & Portfolio</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Profile Summary Details Card */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-6 flex flex-col justify-between shadow-2xs">
+              <div>
+                <div className="flex items-center gap-3 pb-4 border-b border-gray-100 dark:border-slate-800">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-500 flex items-center justify-center text-white font-extrabold text-lg shadow-sm shrink-0">
+                    {userProfile?.name ? userProfile.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'SE'}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight">{userProfile?.name}</h3>
+                    <p className="text-[10px] text-indigo-650 dark:text-indigo-400 font-mono font-bold mt-0.5">{data?.executiveProfile?.team_name || "Sales Executive"}</p>
+                  </div>
+                </div>
+
+                <div className="pt-4 space-y-3.5 text-xs">
+                  <div className="flex justify-between items-center text-gray-600 dark:text-slate-350">
+                    <span className="text-gray-400 dark:text-slate-500 font-bold">Employee ID:</span>
+                    <span className="font-mono font-bold text-gray-800 dark:text-slate-200">{data?.executiveProfile?.employee_id || userProfile?.employee_id || "NOT_ASSIGNED"}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-600 dark:text-slate-350">
+                    <span className="text-gray-400 dark:text-slate-500 font-bold">Joined On:</span>
+                    <span className="font-mono text-gray-800 dark:text-slate-200">{data?.executiveProfile?.joining_date || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-600 dark:text-slate-350">
+                    <span className="text-gray-400 dark:text-slate-500 font-bold">Primary Division:</span>
+                    <span className="text-gray-800 dark:text-slate-200 font-semibold">{data?.executiveProfile?.team_name || "Enterprise Operations"}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-gray-100 dark:border-slate-800 pt-3 text-gray-600 dark:text-slate-350">
+                    <span className="text-gray-400 dark:text-slate-500 font-bold">Authorized Email:</span>
+                    <span className="text-gray-800 dark:text-slate-200 font-medium truncate max-w-[160px]" title={userProfile?.email}>{userProfile?.email}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-gray-100 dark:border-slate-800 text-[10px] text-gray-400 font-mono flex justify-between items-center">
+                <span>System Role Status:</span>
+                <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-wide">
+                  Verified Executive
+                </span>
+              </div>
+            </div>
+
+            {/* Right Column (span 2): Targets and Volume Fulfillment Math */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-6 lg:col-span-2 space-y-6 shadow-2xs">
+              <div>
+                <h3 className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> TARGET & QUOTA FULFILLMENT MATRIX
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Real-time valuation of individual targets vs actual booking status.</p>
+              </div>
+
+              {/* Progress Gauges */}
+              <div className="grid sm:grid-cols-2 gap-6">
+                {/* 1. Unit Volume Quota Gauge */}
+                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-4 rounded-2xl border border-gray-100 dark:border-slate-850 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase font-mono tracking-wider">Unit Sales Quota</span>
+                      <p className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">
+                        {data?.executiveProfile?.achieved ?? 0} / {data?.executiveProfile?.target ?? 0} <span className="text-xs text-gray-400 dark:text-slate-500 font-bold">Units</span>
+                      </p>
+                    </div>
+                    <div className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold font-mono">
+                      {data?.executiveProfile?.target > 0 
+                        ? `${Math.round(((data?.executiveProfile?.achieved ?? 0) / data.executiveProfile.target) * 100)}%` 
+                        : "0%"}
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden shadow-inner">
+                    <div 
+                      className="bg-indigo-500 h-full rounded-full transition-all duration-500" 
+                      style={{ 
+                        width: `${Math.min(
+                          data?.executiveProfile?.target > 0 
+                            ? ((data?.executiveProfile?.achieved ?? 0) / data.executiveProfile.target) * 100 
+                            : 0, 
+                          100
+                        )}%` 
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400 dark:text-slate-500 font-semibold leading-relaxed">
+                    Need <span className="font-bold text-gray-700 dark:text-slate-300">{Math.max((data?.executiveProfile?.target ?? 0) - (data?.executiveProfile?.achieved ?? 0), 0)} more units</span> to trigger individual performance multipliers.
+                  </p>
+                </div>
+
+                {/* 2. Valuation Target Quota Gauge */}
+                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-4 rounded-2xl border border-gray-100 dark:border-slate-850 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase font-mono tracking-wider">Target Valuation Worth</span>
+                      <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+                        {((data?.executiveProfile?.totalVolumeBDT ?? 0) / 100000).toFixed(2)} / {((data?.executiveProfile?.expectedVolumeBDT ?? 0) / 100000).toFixed(2)} <span className="text-xs text-gray-400 dark:text-slate-500 font-bold">Lakh</span>
+                      </p>
+                    </div>
+                    <div className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold font-mono">
+                      {data?.executiveProfile?.expectedVolumeBDT > 0 
+                        ? `${Math.round(((data?.executiveProfile?.totalVolumeBDT ?? 0) / data.executiveProfile.expectedVolumeBDT) * 100)}%` 
+                        : "0%"}
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden shadow-inner">
+                    <div 
+                      className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                      style={{ 
+                        width: `${Math.min(
+                          data?.executiveProfile?.expectedVolumeBDT > 0 
+                            ? ((data?.executiveProfile?.totalVolumeBDT ?? 0) / data.executiveProfile.expectedVolumeBDT) * 100 
+                            : 0, 
+                          100
+                        )}%` 
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400 dark:text-slate-500 font-semibold leading-relaxed">
+                    Estimated evaluation worth of land share to sell is {((data?.executiveProfile?.expectedVolumeBDT ?? 0) / 100000).toFixed(1)} Lakh BDT.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between border-t border-gray-100 dark:border-slate-800 pt-4 text-[10px] text-gray-400 font-mono font-bold uppercase tracking-wider">
+                <span>Incentives Account: ID {data?.executiveProfile?.id || "N/A"}</span>
+                <span className="text-indigo-600 dark:text-indigo-400">Streak Period: Current Month Active</span>
+              </div>
             </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-bold text-emerald-700">{(cards?.totalIncentivePaid ?? 0).toLocaleString()} BDT</h3>
-            <p className="text-[10px] text-gray-500 font-medium">Base + Floor + Targets</p>
-          </div>
-          <div className="absolute top-2 right-2 w-48 h-48 bg-emerald-50 rounded-full -mr-20 -mt-20 opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" />
-        </div>
 
-        {/* Card 3: Total Teams */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 tracking-wider uppercase">Teams Active</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-2xl font-bold text-gray-900">{(cards?.totalTeamsCount ?? 0)} Teams</h3>
-            <p className="text-[10px] text-gray-500 font-medium">Multi-project bindings</p>
-          </div>
-        </div>
-
-        {/* Card 4: Total Executives */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 tracking-wider uppercase">Executives</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-2xl font-bold text-gray-900">{(cards?.totalExecutivesCount ?? 0)} officers</h3>
-            <p className="text-[10px] text-gray-500 font-medium">Registered Employee IDs</p>
-          </div>
-        </div>
-
-        {/* Card 5: Active Projects */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-2xs hover:shadow-xs transition duration-200 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 tracking-wider uppercase">Projects</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
-              <FolderHeart className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-2xl font-bold text-gray-900">{(cards?.activeProjectsCount ?? 0)} Units</h3>
-            <p className="text-[10px] text-gray-500 font-semibold text-emerald-600">Active status</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Dynamic Star Metrics Bento-Grid */}
-      <h2 className="text-lg font-semibold text-gray-800 border-l-4 border-indigo-600 pl-3">Top Standings Summary</h2>
-      <div className="grid md:grid-cols-3 gap-5">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Crown className="w-5 h-5 text-amber-500" />
-            <span className="text-sm font-semibold text-gray-800">Incentive Champions</span>
-          </div>
-          <div className="space-y-3 font-sans">
+          {/* Assigned Selling Projects Campaign Listings */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 p-6 space-y-4 shadow-sm">
             <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Seller</p>
-              <p className="text-sm font-semibold text-gray-900">{tops?.topSeller || "None"}</p>
+              <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">
+                <Building2 className="w-4 h-4 text-indigo-500" />
+                <span>My Assigned Real-Estate Projects</span>
+              </div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1">Properties & Sites Assigned to Me</h3>
+              <p className="text-xs text-gray-400 dark:text-slate-400">Locations and structures you are authorized to market and sell under your direct sales commission plan.</p>
             </div>
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Incentive Earner</p>
-              <p className="text-sm font-semibold text-emerald-700">{tops?.topEarner || "None"}</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-indigo-500" />
-            <span className="text-sm font-semibold text-gray-800">Top-Value Pipelines</span>
-          </div>
-          <div className="space-y-3 font-sans">
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Highest Incentive Project</p>
-              <p className="text-sm font-semibold text-gray-900">{tops?.topProject || "None"}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Performance Team</p>
-              <p className="text-sm font-semibold text-indigo-700">{tops?.topTeam || "None"}</p>
-            </div>
-          </div>
-        </div>
+            {data?.assignedProjects && data.assignedProjects.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                {data.assignedProjects.map((proj: any) => (
+                  <div key={proj.id} className="border border-gray-150 dark:border-slate-800 rounded-2xl p-4.5 bg-gray-50/30 dark:bg-slate-950/20 hover:border-indigo-200 dark:hover:border-indigo-900 hover:shadow-3xs transition-all duration-300 flex flex-col justify-between space-y-3.5">
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="text-xs font-extrabold text-gray-950 dark:text-white leading-tight">{proj.project_name}</h4>
+                          <p className="text-[10px] text-gray-400 dark:text-slate-500 font-semibold mt-0.5 flex items-center gap-1">
+                            <span className="inline-block shrink-0">📍</span>
+                            <span className="truncate max-w-[130px]">{proj.location}</span>
+                          </p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide border font-sans ${
+                          proj.status === 'Active' 
+                            ? 'bg-emerald-50 border-emerald-250 text-emerald-600 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-400' 
+                            : 'bg-zinc-50 border-zinc-200 text-zinc-500 dark:bg-slate-900 dark:border-slate-850 dark:text-slate-400'
+                        }`}>
+                          {proj.status}
+                        </span>
+                      </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-emerald-500" />
-            <span className="text-sm font-semibold text-gray-800">Incentive Composition</span>
-          </div>
-          <div className="space-y-3 font-sans">
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Cumulative Base Seq. Pay</p>
-              <p className="text-sm font-semibold text-gray-800">{(cards?.totalBaseIncentive ?? 0).toLocaleString()} BDT</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Bonus Adjustments Payout</p>
-              <p className="text-sm font-semibold text-emerald-600">{(cards?.totalBonuses ?? 0).toLocaleString()} BDT</p>
-            </div>
+                      {/* Project Stats Summary */}
+                      <div className="grid grid-cols-2 gap-3 mt-4 text-[11px] border-t border-gray-100 dark:border-slate-800 pt-3">
+                        <div>
+                          <span className="text-gray-400 dark:text-slate-500 font-bold block">My Sales</span>
+                          <span className="font-extrabold text-indigo-750 dark:text-indigo-400 font-mono text-xs">{proj.sold_count_by_me} flats</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 dark:text-slate-500 font-bold block">My Volume Sold</span>
+                          <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono text-xs">{(proj.vol_sold_by_me / 100000).toFixed(1)} Lakh</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-gray-105 dark:border-slate-800/70 flex justify-between items-center text-[10px] text-gray-400">
+                      <span className="font-semibold">Average Share:</span>
+                      <span className="font-mono font-bold text-gray-700 dark:text-slate-300">{(proj.avg_land_share).toLocaleString()} BDT</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800">
+                <FolderHeart className="w-8 h-8 text-indigo-200 mx-auto animate-pulse" />
+                <p className="text-xs font-semibold text-gray-650 dark:text-slate-400 mt-2.5">No explicit project campaign sites mapped to your profile yet.</p>
+                <p className="text-[10px] text-gray-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                  Please consult with your Sales Team Leader or Administrative Desk to map your primary properties under the Employees and Executives panels.
+                </p>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Dynamic Star Metrics Bento-Grid */}
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white border-l-4 border-indigo-600 pl-3">Top Standings Summary</h2>
+          <div className="grid md:grid-cols-3 gap-5">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-4 shadow-2xs hover:shadow-xs transition">
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-500" />
+                <span className="text-sm font-semibold text-gray-800 dark:text-white">Incentive Champions</span>
+              </div>
+              <div className="space-y-3 font-sans">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Seller</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-slate-200">{tops?.topSeller || "None"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Incentive Earner</p>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{tops?.topEarner || "None"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-4 shadow-2xs hover:shadow-xs transition">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-indigo-500" />
+                <span className="text-sm font-semibold text-gray-800 dark:text-white">Top-Value Pipelines</span>
+              </div>
+              <div className="space-y-3 font-sans">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Highest Incentive Project</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-slate-200">{tops?.topProject || "None"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Top Performance Team</p>
+                  <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">{tops?.topTeam || "None"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-4 shadow-2xs hover:shadow-xs transition">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-emerald-500" />
+                <span className="text-sm font-semibold text-gray-800 dark:text-white">Incentive Composition</span>
+              </div>
+              <div className="space-y-3 font-sans">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Cumulative Base Seq. Pay</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-slate-200">{(cards?.totalBaseIncentive ?? 0).toLocaleString()} BDT</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Bonus Adjustments Payout</p>
+                  <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{(cards?.totalBonuses ?? 0).toLocaleString()} BDT</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Default Project selection hook */}
       {(() => {

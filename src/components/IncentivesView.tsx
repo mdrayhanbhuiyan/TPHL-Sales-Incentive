@@ -573,6 +573,17 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
 
   const activeRepObj = getReportPayload();
 
+  // Metric aggregates for glass dashboard overview cards
+  const listForMetrics = getFilteredIncentives();
+  const totalSalesCount = listForMetrics.length;
+  const totalVolumeBDT = listForMetrics.reduce((sum, item) => sum + Number(item.land_share_amount || 0), 0);
+  const totalIncentivesBDT = listForMetrics.reduce((sum, item) => sum + Number(item.total_incentive || 0), 0);
+  const totalBaseIncentive = listForMetrics.reduce((sum, item) => sum + Number(item.base_incentive || 0), 0);
+  const totalFloorBonus = listForMetrics.reduce((sum, item) => sum + Number(item.floor_bonus || 0), 0);
+  const totalTargetBonus = listForMetrics.reduce((sum, item) => sum + Number(item.target_bonus || 0), 0);
+  const totalTeamBonus = listForMetrics.reduce((sum, item) => sum + Number(item.team_bonus || 0), 0);
+  const avgIncentiveValue = totalSalesCount > 0 ? Math.round(totalIncentivesBDT / totalSalesCount) : 0;
+
   // --- ACTIONS EXPORTERS ---
 
   // EXPORT EXCEL (CSV formatting and triggers with Blob safety)
@@ -965,7 +976,176 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
           <p className="text-xs text-gray-400 font-mono">Running report compilation formulas...</p>
         </div>
       ) : (
-        <div id="print-area" className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-5 print:border-none print:shadow-none">
+        <div className="space-y-6">
+          {/* PREMIUM GLASS-MORPHIC REPORT SUMMARY DECK */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
+            {/* Card 1: Sales Summary */}
+            <div className="premium-glass-card premium-glass-hover p-5 flex flex-col justify-between min-h-[140px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest block mb-1">Volume Summary</span>
+                  <h3 className="text-lg font-extrabold text-gray-950 dark:text-white leading-tight">{(totalVolumeBDT / 100000).toFixed(2)} Lakh BDT</h3>
+                  <p className="text-[11px] text-gray-500 mt-1 font-semibold">Accumulated from <span className="font-bold text-gray-800 dark:text-slate-200">{totalSalesCount} units</span> sold</p>
+                </div>
+                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <FileText className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-gray-150/40 dark:border-slate-800/50 flex justify-between items-center text-[10px] text-gray-400">
+                <span>Avg Unit Ticket</span>
+                <span className="font-mono font-bold text-gray-700 dark:text-gray-300">{totalSalesCount > 0 ? (totalVolumeBDT / totalSalesCount).toLocaleString(undefined, {maximumFractionDigits:0}) : 0} BDT</span>
+              </div>
+            </div>
+
+            {/* Card 2: Commission Ledger */}
+            <div className="premium-glass-card premium-glass-hover p-5 flex flex-col justify-between min-h-[140px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest block mb-1">Total Payouts</span>
+                  <h3 className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight">{(totalIncentivesBDT / 100000).toFixed(2)} Lakh BDT</h3>
+                  <p className="text-[11px] text-gray-500 mt-1 font-semibold">Avg: <span className="font-bold text-gray-800 dark:text-slate-200">{avgIncentiveValue.toLocaleString()} BDT</span> per flat</p>
+                </div>
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                  <Coins className="w-5 h-5 animate-pulse" />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-gray-150/40 dark:border-slate-800/50 flex justify-between items-center text-[10px] text-gray-400">
+                <span>Base Commission Total</span>
+                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{totalBaseIncentive.toLocaleString()} BDT</span>
+              </div>
+            </div>
+
+            {/* Card 3: Bonuses Split */}
+            <div className="premium-glass-card premium-glass-hover p-5 flex flex-col justify-between min-h-[140px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest block mb-1">Bonus Distributions</span>
+                  <h3 className="text-lg font-extrabold text-blue-600 dark:text-blue-400 leading-tight">{((totalFloorBonus + totalTargetBonus + totalTeamBonus) / 100000).toFixed(2)} Lakh</h3>
+                  <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-1.5 font-semibold leading-relaxed">
+                    <span title="Floor position bonuses spec">Floor: {totalFloorBonus.toLocaleString()}</span>
+                    <span>•</span>
+                    <span title="Individual quota bonus">Target: {totalTargetBonus.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-xl">
+                  <Users className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-gray-150/40 dark:border-slate-800/50 flex justify-between items-center text-[10px] text-gray-400">
+                <span>Team Manager Bonus</span>
+                <span className="font-mono font-bold text-blue-700 dark:text-blue-400">{totalTeamBonus.toLocaleString()} BDT</span>
+              </div>
+            </div>
+
+            {/* Card 4: Report Insights */}
+            <div className="premium-glass-card premium-glass-hover p-5 flex flex-col justify-between min-h-[140px]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 uppercase tracking-widest block mb-1">Report Insights</span>
+                  <h3 className="text-xs font-bold text-gray-800 dark:text-slate-200 uppercase tracking-tight line-clamp-1">{activeRepObj.title}</h3>
+                  <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 leading-relaxed w-full">
+                    {activeReport === 'mon-inc' && "Breaks down base rate commission structure and incremental floor and team payouts."}
+                    {activeReport === 'mon-sales' && "Detailed journal containing direct unit configuration values and registered flat booking logs."}
+                    {activeReport === 'exec-perf' && "Aggregated commission outputs and volumes grouped by executive user IDs."}
+                    {activeReport === 'team-perf' && "Compares entire division achievements against registered monthly sales target quotas."}
+                    {activeReport === 'proj-sales' && "Sums exact property sales pipeline values categorized by physical site locations."}
+                    {activeReport === 'proj-inc' && "Shows how commission expenses are distributed project-by-project across the city."}
+                    {activeReport === 'top-seller' && "Tracks ranking of first-class achievers sorted descending by booking volumes."}
+                    {activeReport === 'top-earner' && "Displays high-earning agents who optimized commissions, floor bonuses and quota payouts."}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <Trophy className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-gray-150/40 dark:border-slate-800/50 flex justify-between items-center text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                <span>Status</span>
+                <span className="animate-pulse">● System Verified</span>
+              </div>
+            </div>
+          </div>
+
+          {/* HIGHLY-DETAILED SPECIFIC EXPLANATORY INFOGRAPHICS BLOCK */}
+          <div className="premium-glass rounded-3xl p-6 border border-gray-150/35 dark:border-slate-800/50 flex flex-col md:flex-row items-center justify-between gap-6 print:hidden">
+            <div className="space-y-2 max-w-2xl">
+              <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-wide">
+                <span>💡 Specific Analysis Guide</span>
+                <span>•</span>
+                <span>{activeReport === 'mon-inc' ? "Claims Auditing Math" : activeReport === 'team-perf' ? "Target Fulfillment Math" : "Operation Logic"}</span>
+              </div>
+              <h4 className="text-sm font-bold text-gray-800 dark:text-slate-200">
+                {activeReport === 'mon-inc' && "How is the commission built?"}
+                {activeReport === 'mon-sales' && "What does this Sales Journal contain?"}
+                {activeReport === 'exec-perf' && "How is an Executive's cumulative yield tracked?"}
+                {activeReport === 'team-perf' && "How are Quotas audited?"}
+                {activeReport === 'proj-sales' && "What does this Area Performance chart signify?"}
+                {activeReport === 'proj-inc' && "Why track project-by-project distributed commissions?"}
+                {activeReport === 'top-seller' && "Leaderboard benchmarks and volume thresholds"}
+                {activeReport === 'top-earner' && "Who ranks highest in commission optimization?"}
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
+                {activeReport === 'mon-inc' && "Commission payouts dynamically scale between 1% to 7% based on chronological sales count in that project. Additionally, flats on the 1st floor (+) and Top floors earn flat-rate floor location bonuses. Successful individual quota achievements trigger individual target bonuses, while overall division targets trigger team bonuses."}
+                {activeReport === 'mon-sales' && "This log contains all chronological registered flat sales within active development sites. It matches flats with physical parameters, the registered customer purchase date, officer identifiers, and the ultimate land share property evaluation volume."}
+                {activeReport === 'exec-perf' && "This monitors performance indicators across our Sales Executives. Handled volume is the sum value of flats sold, while Net Payout represents the finalized cleared payouts incorporating all base calculations, floor bonuses, team target multipliers, and single achievements."}
+                {activeReport === 'team-perf' && "This view calculates divisional targets. Completion % represents the division's total registered unit sales divided by their respective monthly quota target. Successful achievement of 100% target guarantees a direct bonus allocation across active staff."}
+                {activeReport === 'proj-sales' && "Calculates the booking pipeline, evaluating consumer demand. It illustrates exactly which project site developments produce the highest financial cash flows so our operations division can target appropriate land holdings."}
+                {activeReport === 'proj-inc' && "This displays the distribution of developer commissions. Ideal for executive financial teams to ensure total active outlays remain within board-set limits of project revenue margins."}
+                {activeReport === 'top-seller' && "Provides real-time visibility into the Top 10 High-Value performers ranked by total BDT volume bookings. Highlighted with premium indicators to track exceptional contributors."}
+                {activeReport === 'top-earner' && "Showcases the top 10 earners who maximized active commission rule parameters. This includes optimizing high floor bonuses, individual target bonuses, and participating under highly achieved divisions."}
+              </p>
+            </div>
+
+            {/* Graphical Stacked Proportion Bar or Visual Multiplier Indicator */}
+            <div className="w-full md:w-64 shrink-0 bg-white/50 dark:bg-slate-900/40 p-4 rounded-2xl border border-gray-150/40 dark:border-slate-800 flex flex-col justify-center space-y-3 shadow-3xs">
+              <span className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Interactive Breakdown</span>
+              {totalIncentivesBDT > 0 ? (
+                <div className="space-y-2.5">
+                  <div className="flex justify-between text-[10px] text-gray-500 font-bold">
+                    <span>Base Payout</span>
+                    <span className="font-mono text-gray-850 dark:text-slate-350">{Math.round((totalBaseIncentive / totalIncentivesBDT) * 100)}%</span>
+                  </div>
+                  {/* Progress Bar Proportion Stack */}
+                  <div className="w-full h-3 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
+                    <div 
+                      className="bg-indigo-500 h-full" 
+                      style={{ width: `${(totalBaseIncentive / totalIncentivesBDT) * 100}%` }}
+                      title={`Base: ${Math.round((totalBaseIncentive / totalIncentivesBDT) * 100)}%`}
+                    />
+                    <div 
+                      className="bg-amber-400 h-full" 
+                      style={{ width: `${(totalFloorBonus / totalIncentivesBDT) * 100}%` }}
+                      title={`Floor: ${Math.round((totalFloorBonus / totalIncentivesBDT) * 100)}%`}
+                    />
+                    <div 
+                      className="bg-blue-500 h-full" 
+                      style={{ width: `${((totalTargetBonus + totalTeamBonus) / totalIncentivesBDT) * 100}%` }}
+                      title={`Bonuses: ${Math.round(((totalTargetBonus + totalTeamBonus) / totalIncentivesBDT) * 100)}%`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[9px] text-gray-400 font-bold justify-between pt-1">
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-50" />
+                      <span className="text-indigo-650">Base</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <span className="text-amber-600">Floor</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-50" />
+                      <span className="text-blue-600">Bonus</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-[11px] text-gray-400 italic">
+                  No active payouts computed yet to graph.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div id="print-area" className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-5 print:border-none print:shadow-none">
           {/* Print Letterhead block (visible under print only) */}
           <div className="hidden print:block border-b-2 border-gray-800 pb-5 mb-5">
             <div className="flex items-center justify-between">
@@ -1044,6 +1224,7 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
               <div className="border-t border-gray-200 pt-2">Managing Director Approved</div>
             </div>
           </div>
+        </div>
         </div>
       )}
     </div>

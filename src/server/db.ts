@@ -1735,18 +1735,24 @@ export async function createFirestoreSnapshot(createdByEmail: string): Promise<a
     throw new Error("Firestore write quota has been exceeded. Manual snapshot cannot be stored in the cloud at this time.");
   }
 
-  const backupId = `backup-${Date.now()}`;
-  const docRef = doc(firestoreDb, 'backups', backupId);
-  const currentStore = getStore();
-  const snapshotRecord = {
-    id: backupId,
-    timestamp: new Date().toISOString(),
-    createdBy: createdByEmail || 'Admin',
-    data: JSON.stringify(currentStore)
-  };
+  try {
+    const backupId = `backup-${Date.now()}`;
+    const docRef = doc(firestoreDb, 'backups', backupId);
+    const currentStore = getStore();
+    const snapshotRecord = {
+      id: backupId,
+      timestamp: new Date().toISOString(),
+      createdBy: createdByEmail || 'Admin',
+      data: JSON.stringify(currentStore)
+    };
 
-  await setDoc(docRef, snapshotRecord);
-  return { id: backupId, timestamp: snapshotRecord.timestamp, createdBy: snapshotRecord.createdBy, size: snapshotRecord.data.length };
+    await setDoc(docRef, snapshotRecord);
+    return { id: backupId, timestamp: snapshotRecord.timestamp, createdBy: snapshotRecord.createdBy, size: snapshotRecord.data.length };
+  } catch (err: any) {
+    console.error("[db.ts] Create Firestore snapshot error:", err);
+    handleFirestoreFailure(err);
+    throw err;
+  }
 }
 
 export async function listFirestoreSnapshots(): Promise<any[]> {
@@ -1754,22 +1760,28 @@ export async function listFirestoreSnapshots(): Promise<any[]> {
     return [];
   }
   
-  const collRef = collection(firestoreDb, 'backups');
-  const snap = await getDocs(collRef);
-  const list: any[] = [];
-  
-  snap.forEach(docSnap => {
-    const record = docSnap.data();
-    list.push({
-      id: record.id || docSnap.id,
-      timestamp: record.timestamp || new Date().toISOString(),
-      createdBy: record.createdBy || 'Unknown',
-      size: record.data ? record.data.length : 0
+  try {
+    const collRef = collection(firestoreDb, 'backups');
+    const snap = await getDocs(collRef);
+    const list: any[] = [];
+    
+    snap.forEach(docSnap => {
+      const record = docSnap.data();
+      list.push({
+        id: record.id || docSnap.id,
+        timestamp: record.timestamp || new Date().toISOString(),
+        createdBy: record.createdBy || 'Unknown',
+        size: record.data ? record.data.length : 0
+      });
     });
-  });
 
-  list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  return list;
+    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return list;
+  } catch (err: any) {
+    console.error("[db.ts] List Firestore snapshots error:", err);
+    handleFirestoreFailure(err);
+    return [];
+  }
 }
 
 export async function restoreFirestoreSnapshot(snapshotId: string): Promise<any> {
@@ -1777,21 +1789,27 @@ export async function restoreFirestoreSnapshot(snapshotId: string): Promise<any>
     throw new Error("Firestore database is not connected. Restore requires an active Cloud Firestore connection.");
   }
 
-  const docRef = doc(firestoreDb, 'backups', snapshotId);
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) {
-    throw new Error(`Snapshot with ID "${snapshotId}" not found.`);
-  }
+  try {
+    const docRef = doc(firestoreDb, 'backups', snapshotId);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      throw new Error(`Snapshot with ID "${snapshotId}" not found.`);
+    }
 
-  const record = docSnap.data();
-  if (!record.data) {
-    throw new Error("Snapshot has no database content.");
-  }
+    const record = docSnap.data();
+    if (!record.data) {
+      throw new Error("Snapshot has no database content.");
+    }
 
-  const restoredStore: DatabaseStore = JSON.parse(record.data);
-  
-  await writeStore(restoredStore);
-  return { success: true, restoredAt: new Date().toISOString() };
+    const restoredStore: DatabaseStore = JSON.parse(record.data);
+    
+    await writeStore(restoredStore);
+    return { success: true, restoredAt: new Date().toISOString() };
+  } catch (err: any) {
+    console.error("[db.ts] Restore Firestore snapshot error:", err);
+    handleFirestoreFailure(err);
+    throw err;
+  }
 }
 
 export async function deleteFirestoreSnapshot(snapshotId: string): Promise<any> {
@@ -1799,9 +1817,15 @@ export async function deleteFirestoreSnapshot(snapshotId: string): Promise<any> 
     throw new Error("Firestore database is not connected. Delete requires an active Cloud Firestore connection.");
   }
 
-  const docRef = doc(firestoreDb, 'backups', snapshotId);
-  await deleteDoc(docRef);
-  return { success: true };
+  try {
+    const docRef = doc(firestoreDb, 'backups', snapshotId);
+    await deleteDoc(docRef);
+    return { success: true };
+  } catch (err: any) {
+    console.error("[db.ts] Delete Firestore snapshot error:", err);
+    handleFirestoreFailure(err);
+    throw err;
+  }
 }
 
 export async function getFirebaseDiagnostics(): Promise<any> {

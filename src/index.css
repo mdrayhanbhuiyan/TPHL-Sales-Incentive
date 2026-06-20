@@ -51,6 +51,70 @@ html, body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
+/* Premium Glassmorphism Suite */
+.premium-glass {
+  background-color: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+}
+
+.dark .premium-glass {
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+}
+
+.premium-glass-card {
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 
+    0 10px 30px -10px rgba(0, 0, 0, 0.04),
+    0 1px 1px 0 rgba(255, 255, 255, 0.8) inset;
+  border-radius: 24px;
+}
+
+.dark .premium-glass-card {
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 10px 30px -10px rgba(0, 0, 0, 0.3),
+    0 1px 1px 0 rgba(255, 255, 255, 0.05) inset;
+  border-radius: 24px;
+}
+
+.premium-glass-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.premium-glass-hover:hover {
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 
+    0 20px 45px -12px rgba(37, 99, 235, 0.08),
+    0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+.dark .premium-glass-hover:hover {
+  background-color: rgba(30, 41, 59, 0.75);
+  box-shadow: 
+    0 20px 45px -12px rgba(37, 99, 235, 0.25),
+    0 0 0 1px rgba(37, 99, 235, 0.3);
+}
+
+/* Automatically upgrade all modal dialog backdrop-blurs to ultra-premium glass blur */
+.backdrop-blur-xs {
+  backdrop-filter: blur(10px) saturate(110%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(110%) !important;
+}
+
 .metric-val {
   font-size: 1.5rem;
   font-weight: 700;

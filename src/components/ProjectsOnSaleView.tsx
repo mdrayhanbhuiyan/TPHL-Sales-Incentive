@@ -81,7 +81,9 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
 
   // Details popover state
   const [selectedProject, setSelectedProject] = useState<ProjectOnSale | null>(null);
-  const [activePlanTab, setActivePlanTab] = useState<'plan' | 'table'>('plan');
+  const [activePlanTab, setActivePlanTab] = useState<'plan' | 'table' | 'architect'>('plan');
+  const [selectedArchitectCell, setSelectedArchitectCell] = useState<{ floor: number; letter: string } | null>(null);
+  const [architectSaving, setArchitectSaving] = useState<boolean>(false);
   const [selectedHistoryFlat, setSelectedHistoryFlat] = useState<{
     unitName: string;
     sale: any;
@@ -192,6 +194,51 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
     setSelectedProject(project);
     setSelectedUnit(null);
     setRegSuccessMessage(null);
+  };
+
+  const handleSaveArchitectConfig = async (
+    project: ProjectOnSale,
+    newDuplexConfigStr: string,
+    newFirstFloorSplit: boolean
+  ) => {
+    setArchitectSaving(true);
+    try {
+      const payload = {
+        project_name: project.project_name,
+        flat_unit_size: project.flat_unit_size,
+        project_id: project.project_id,
+        floor_number: Number(project.floor_number),
+        units_per_floor: Number(project.units_per_floor),
+        land_share_price: project.land_share_price !== undefined ? Number(project.land_share_price) : undefined,
+        first_floor_2_units: newFirstFloorSplit,
+        duplex_configs: newDuplexConfigStr,
+        unit_configs: project.unit_configs || {}
+      };
+
+      const res = await fetch(`/api/projects-on-sale/${project.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedProject(data);
+        toast.success("Flat Layout registration structure updated successfully in real-time!");
+        fetchData();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to update project registration structure.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Connecting with server failed.");
+    } finally {
+      setArchitectSaving(false);
+    }
   };
 
   const handleOpenCreateModal = () => {
@@ -932,7 +979,7 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
               </div>
 
               {/* View Tab Selector & Legend Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-slate-850/20 p-3 rounded-2xl border border-gray-100 dark:border-slate-850">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-slate-850/20 p-3 rounded-2xl border border-gray-100 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-slate-900 rounded-xl border border-gray-150 dark:border-slate-800">
                   <button
                     type="button"
@@ -948,18 +995,34 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                   >
                     Availability Table
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePlanTab('architect')}
+                    className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${activePlanTab === 'architect' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-500 hover:text-gray-900 dark:text-slate-400'}`}
+                  >
+                    📐 Layout Configurator
+                  </button>
                 </div>
-                <div className="flex items-center gap-3 text-[10.5px]">
-                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-semibold">
-                    <span className="w-3 h-3 rounded-md bg-slate-50 border border-gray-200 dark:bg-slate-850 dark:border-slate-700 block" /> Vacant
-                  </span>
-                  <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
-                    <span className="w-3 h-3 rounded-md bg-amber-500 border border-amber-600 block" /> Booked
-                  </span>
-                  <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
-                    <span className="w-3 h-3 rounded-md bg-emerald-600 border border-emerald-700 block" /> Fully Sold
-                  </span>
-                </div>
+                {activePlanTab !== 'architect' ? (
+                  <div className="flex items-center gap-3 text-[10.5px]">
+                    <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-semibold">
+                      <span className="w-3 h-3 rounded-md bg-slate-50 border border-gray-200 dark:bg-slate-850 dark:border-slate-700 block" /> Vacant
+                    </span>
+                    <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
+                      <span className="w-3 h-3 rounded-md bg-amber-500 border border-amber-600 block" /> Booked
+                    </span>
+                    <span className="flex items-center gap-1.5 text-gray-550 dark:text-gray-300 font-semibold">
+                      <span className="w-3 h-3 rounded-md bg-emerald-600 border border-emerald-700 block" /> Fully Sold
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-[10.5px]">
+                    <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-xl font-bold flex items-center gap-1">
+                      🔧 Architect Mode
+                    </span>
+                    <span className="text-gray-400 font-medium font-sans">Click slots to toggle duplex links & split rooms</span>
+                  </div>
+                )}
               </div>
 
               {activePlanTab === 'plan' ? (
@@ -1242,7 +1305,7 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
 
                   </div>
                 </div>
-              ) : (
+              ) : activePlanTab === 'table' ? (
                 /* Availability Table view of all campaign flats */
                 <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-slate-50/40 dark:bg-slate-900/20 border border-gray-100 dark:border-slate-800 rounded-2xl p-2">
                   <div className="overflow-y-auto flex-1">
@@ -1327,6 +1390,296 @@ export default function ProjectsOnSaleView({ authToken, userRole, refreshTrigger
                     </table>
                   </div>
                 </div>
+              ) : (
+                /* activePlanTab === 'architect' Dynamic Grid Map Layout Configurator */
+                (() => {
+                  const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+                  const getColsForFloor = (floorNum: number) => {
+                    let limit = selectedProject.units_per_floor;
+                    if (floorNum === 1 && selectedProject.units_per_floor === 1 && selectedProject.first_floor_2_units) {
+                      limit = 2;
+                    }
+                    const cols = [];
+                    for (let u = 0; u < limit; u++) {
+                      cols.push(letters[u] || String.fromCharCode(65 + u));
+                    }
+                    return cols;
+                  };
+
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden flex-1">
+                      
+                      {/* Left Panel: Vertical Floor Stack Structure Grid */}
+                      <div className="lg:col-span-7 flex flex-col space-y-4 overflow-hidden h-full">
+                        <div className="flex-1 overflow-y-auto space-y-3.5 pr-2 border border-gray-50 dark:border-slate-850 p-2 rounded-2xl bg-gray-50/20 dark:bg-slate-900/40">
+                          {floorsArray.map((floorNum) => {
+                            const cols = getColsForFloor(floorNum);
+                            const isTopFloor = floorNum === selectedProject.floor_number;
+                            const isFirstFloor = floorNum === 1;
+
+                            return (
+                              <div 
+                                key={floorNum} 
+                                className="flex items-stretch gap-3 bg-white dark:bg-slate-850 rounded-2xl border border-gray-100 dark:border-slate-800/80 p-2 shadow-xs transition"
+                              >
+                                {/* Floor label badge */}
+                                <div className="w-16 flex-shrink-0 flex flex-col justify-center items-center rounded-xl bg-gray-50 dark:bg-slate-800/60 p-1 text-center border border-gray-100/60 dark:border-slate-700 text-[10px] font-bold">
+                                  <span className="text-gray-400 uppercase tracking-widest text-[8px]">LEVEL</span>
+                                  <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">{floorNum}</span>
+                                  {isTopFloor && <span className="text-[7px] text-amber-600 font-extrabold uppercase mt-0.5 bg-amber-50 dark:bg-amber-950/40 px-1 rounded">TOP</span>}
+                                  {isFirstFloor && <span className="text-[7px] text-indigo-600 font-extrabold uppercase mt-0.5 bg-indigo-50 dark:bg-indigo-950/40 px-1 rounded font-sans">1st</span>}
+                                </div>
+
+                                {/* Dynamic layout grid map representing slots */}
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                  {cols.map((letter) => {
+                                    const isSelected = selectedArchitectCell?.floor === floorNum && selectedArchitectCell?.letter === letter;
+                                    const isSplitSlot = (floorNum === 1 && selectedProject.units_per_floor === 1 && selectedProject.first_floor_2_units);
+                                    
+                                    const duplexes = parseDuplexConfigsClient(selectedProject.duplex_configs);
+                                    const cellDuplex = duplexes.find(d => {
+                                      if (d.type === 'unit') {
+                                        return (d.lowFloor === floorNum || d.highFloor === floorNum) && d.letter === letter;
+                                      } else {
+                                        return (d.lowFloor === floorNum || d.highFloor === floorNum);
+                                      }
+                                    });
+
+                                    let btnClasses = "relative transition-all duration-200 py-3 rounded-xl border text-center font-bold text-xs cursor-pointer shadow-3xs flex flex-col items-center justify-center min-h-[50px] ";
+                                    if (isSelected) {
+                                      btnClasses += "ring-3 ring-indigo-500 ring-offset-2 dark:ring-indigo-400 scale-[1.03] z-10 font-black ";
+                                    }
+
+                                    if (cellDuplex) {
+                                      btnClasses += "bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-indigo-250 dark:border-indigo-900";
+                                    } else if (isSplitSlot) {
+                                      btnClasses += "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/20 dark:hover:bg-amber-900/10 text-amber-805 dark:text-amber-400 border-amber-200 dark:border-amber-900";
+                                    } else {
+                                      btnClasses += "bg-white hover:bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-250 border-gray-150 dark:border-slate-755";
+                                    }
+
+                                    return (
+                                      <button
+                                        key={letter}
+                                        type="button"
+                                        onClick={() => setSelectedArchitectCell({ floor: floorNum, letter })}
+                                        className={btnClasses}
+                                      >
+                                        <span className="text-xs font-mono font-extrabold tracking-tight">
+                                          Unit {floorNum}{letter}
+                                        </span>
+                                        {cellDuplex && (
+                                          <span className="text-[7.5px] font-sans font-bold uppercase tracking-wider opacity-85 mt-0.5 text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5">
+                                            🔗 Duplex {cellDuplex.lowFloor === floorNum ? `(Low to L${cellDuplex.highFloor})` : `(High from L${cellDuplex.lowFloor})`}
+                                          </span>
+                                        )}
+                                        {isSplitSlot && (
+                                          <span className="text-[7.5px] font-sans font-bold uppercase tracking-wider opacity-85 mt-0.5 text-amber-600 dark:text-amber-505">
+                                            🥞 Split Twin
+                                          </span>
+                                        )}
+                                        {!cellDuplex && !isSplitSlot && (
+                                          <span className="text-[7.5px] font-sans font-medium uppercase tracking-wider text-gray-400 mt-0.5">
+                                            Standard Flat
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Right Panel: Selected Cell Structure Architect Inspector */}
+                      <div className="lg:col-span-12 xl:col-span-5 border border-gray-100 dark:border-slate-800 rounded-3xl p-5 bg-gray-50/30 dark:bg-slate-850/20 flex flex-col h-full overflow-y-auto min-h-[300px]">
+                        {!selectedArchitectCell ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3.5">
+                            <div className="p-4 bg-indigo-50 dark:bg-slate-850 text-indigo-600 dark:text-indigo-400 rounded-full animate-pulse">
+                              <Layers className="w-8 h-8" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-gray-800 dark:text-white uppercase tracking-wider">Select Slot to Configure</h4>
+                              <p className="text-[11px] text-gray-400 mt-1.5 max-w-xs leading-relaxed font-sans">
+                                Click on any level slot card in the layout grid to inspect its current properties, toggle split registration structures, or connect floors into Duplex units!
+                              </p>
+                            </div>
+                          </div>
+                        ) : (() => {
+                          const f = selectedArchitectCell.floor;
+                          const l = selectedArchitectCell.letter;
+                          
+                          const duplexes = parseDuplexConfigsClient(selectedProject.duplex_configs);
+                          const currentDuplex = duplexes.find(d => {
+                            if (d.type === 'unit') {
+                              return (d.lowFloor === f || d.highFloor === f) && d.letter === l;
+                            } else {
+                              return (d.lowFloor === f || d.highFloor === f);
+                            }
+                          });
+
+                          const isFirstFloorSplitSupported = (f === 1 && selectedProject.units_per_floor === 1);
+                          const isFirstFloorCurrentSplit = !!selectedProject.first_floor_2_units;
+
+                          const handleToggleSplitAction = () => {
+                            const nextSplit = !isFirstFloorCurrentSplit;
+                            handleSaveArchitectConfig(selectedProject, selectedProject.duplex_configs || '', nextSplit);
+                          };
+
+                          const handleToggleDuplexAction = (action: 'link-above' | 'link-below' | 'unlink') => {
+                            let newConfigStr = selectedProject.duplex_configs || '';
+                            const currentParts = newConfigStr ? newConfigStr.split(',').map(x => x.trim()).filter(Boolean) : [];
+
+                            if (action === 'unlink' && currentDuplex) {
+                              const removeString1 = `${currentDuplex.lowFloor}${currentDuplex.letter}-${currentDuplex.highFloor}${currentDuplex.letter}`.toUpperCase();
+                              const removeString2 = `${currentDuplex.lowFloor}-${currentDuplex.highFloor}`.toUpperCase();
+                              const filtered = currentParts.filter(p => {
+                                const upper = p.toUpperCase();
+                                return upper !== removeString1 && upper !== removeString2;
+                              });
+                              newConfigStr = filtered.join(',');
+                            } else if (action === 'link-above') {
+                              const pair = `${f}${l}-${f+1}${l}`;
+                              if (!currentParts.map(x => x.toUpperCase()).includes(pair.toUpperCase())) {
+                                currentParts.push(pair);
+                              }
+                              newConfigStr = currentParts.join(',');
+                            } else if (action === 'link-below') {
+                              const pair = `${f-1}${l}-${f}${l}`;
+                              if (!currentParts.map(x => x.toUpperCase()).includes(pair.toUpperCase())) {
+                                currentParts.push(pair);
+                              }
+                              newConfigStr = currentParts.join(',');
+                            }
+
+                            handleSaveArchitectConfig(selectedProject, newConfigStr, isFirstFloorCurrentSplit);
+                          };
+
+                          return (
+                            <div className="space-y-4 text-xs">
+                              {/* Slot Header */}
+                              <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-slate-800">
+                                <div>
+                                  <h4 className="text-sm font-extrabold text-gray-900 dark:text-white uppercase font-sans">
+                                    Level {f} — Slot {l}
+                                  </h4>
+                                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono mt-0.5">
+                                    {currentDuplex ? 'Status: Configured Duplex' : isFirstFloorCurrentSplit && f === 1 ? 'Status: Active Ground Split' : 'Status: Standard Layout Flat'}
+                                  </p>
+                                </div>
+                                <span className="text-[11px] font-mono text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
+                                  Unit {f}{l}
+                                </span>
+                              </div>
+
+                              {/* Detail Indicators */}
+                              <div className="space-y-2 bg-white dark:bg-slate-900/60 p-4 rounded-2xl border border-gray-150/45 dark:border-slate-800/80 leading-relaxed font-sans text-gray-550 dark:text-slate-400 text-[11px]">
+                                <p>
+                                  Each campaign layout links floors or divisions. Adjusting structures will instantly update building totals, recalculate commission bonuses, and preserve matched sales registration deeds safely.
+                                </p>
+                                <div className="border-t border-gray-50 dark:border-slate-805 pt-2 mt-2 space-y-1 font-mono text-[10px]">
+                                  <div className="flex justify-between">
+                                    <span>Default Size:</span>
+                                    <span className="font-bold text-gray-700 dark:text-slate-300">{selectedProject.flat_unit_size}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Total Floors:</span>
+                                    <span className="font-bold text-gray-700 dark:text-slate-300">{selectedProject.floor_number} Levels</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Architectural Change Controls */}
+                              <div className="space-y-3.5 pt-2">
+                                <h5 className="font-extrabold text-[10px] text-gray-400 uppercase tracking-widest block">
+                                  Structure Actions
+                                </h5>
+
+                                {architectSaving ? (
+                                  <div className="p-6 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 font-semibold rounded-2xl border border-indigo-100/40 text-center space-y-2">
+                                    <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                                    <p className="text-[10.5px]">Syndicating new blueprints with database...</p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2.5">
+                                    {/* First level Split Toggling */}
+                                    {isFirstFloorSplitSupported && (
+                                      <div className="border border-amber-100/60 dark:border-amber-950 bg-amber-50/20 dark:bg-amber-950/10 p-3.5 rounded-2xl space-y-2">
+                                        <span className="text-[9px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wide block">
+                                          🥐 Ground-floor Split Layout
+                                        </span>
+                                        <p className="text-[10px] text-gray-400 leading-normal">
+                                          Toggle splitting Level 1 into two twin registered deeds: 1A and 1B.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={handleToggleSplitAction}
+                                          className="w-full text-[11px] font-bold py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition text-center cursor-pointer"
+                                        >
+                                          {isFirstFloorCurrentSplit ? "🥞 Merge Ground Level (Un-split)" : "🥞 Split Ground Level (A + B Flats)"}
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {/* Duplex Toggling Options */}
+                                    <div className="border border-indigo-100/60 dark:border-indigo-955 bg-indigo-50/25 dark:bg-indigo-955/10 p-3.5 rounded-2xl space-y-2.5">
+                                      <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide block">
+                                        🔗 Duplex Configuration
+                                      </span>
+                                      {currentDuplex ? (
+                                        <div className="space-y-2">
+                                          <p className="text-[10px] text-gray-450 leading-normal">
+                                            This slot is currently part of a duplex unit spanning floors <strong>Level {currentDuplex.lowFloor}</strong> and <strong>Level {currentDuplex.highFloor}</strong> (Suffix {currentDuplex.letter || 'A'}).
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleDuplexAction('unlink')}
+                                            className="w-full text-[11px] font-bold py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-slate-800 dark:hover:bg-slate-705 text-indigo-600 dark:text-indigo-400 border border-indigo-205 dark:border-indigo-805 transition text-center cursor-pointer font-sans"
+                                          >
+                                            ✂ Dissolve Duplex Link
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-2">
+                                          <p className="text-[10px] text-gray-405 leading-normal">
+                                            Configure this flat as a double-decker suite. Connecting adjacent levels removes the floor boundary and creates a combined registry deed.
+                                          </p>
+                                          
+                                          <div className="grid grid-cols-1 gap-2">
+                                            {f < selectedProject.floor_number && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleToggleDuplexAction('link-above')}
+                                                className="w-full text-[11px] font-bold py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-755 text-white font-sans transition text-center cursor-pointer flex items-center justify-center gap-1.5"
+                                              >
+                                                <Layers className="w-3.5 h-3.5" /> Link with Lvl {f+1} (Create Duplex)
+                                              </button>
+                                            )}
+                                            {f > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleToggleDuplexAction('link-below')}
+                                                className="w-full text-[11px] font-bold py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-755 text-white font-sans transition text-center cursor-pointer flex items-center justify-center gap-1.5"
+                                              >
+                                                <Layers className="w-3.5 h-3.5" /> Link with Lvl {f-1} (Create Duplex)
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()
               )}
 
               {/* Footer controls */}

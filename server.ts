@@ -521,6 +521,12 @@ export async function startServer() {
       const totalIncentiveBDT = monthlyIncs.reduce((sum, item) => sum + item.total_incentive, 0);
       const milestoneBonusBDT = monthlyIncs.reduce((sum, item) => sum + (item.floor_bonus + item.target_bonus + item.team_bonus), 0);
 
+      // Build all-time counts of sales per project for precise progressive tier computations
+      const salesByProject: Record<string, number> = {};
+      store.projects.forEach(p => {
+        salesByProject[p.id] = store.sales.filter(s => s.executive_id === exec.id && s.project_id === p.id).length;
+      });
+
       return {
         id: exec.id,
         name: exec.name,
@@ -530,7 +536,9 @@ export async function startServer() {
         totalVolumeBDT,
         totalIncentiveBDT,
         milestoneBonusBDT,
-        weeksCount: [w1, w2, w3, w4, w5]
+        weeksCount: [w1, w2, w3, w4, w5],
+        project_id: exec.project_id,
+        salesByProject
       };
     });
 
@@ -748,6 +756,59 @@ export async function startServer() {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 20); // Keep top 20 recent records
 
+    // Compile dynamic executive profile details and projects assigned specifically
+    const matchedExec = store.salesExecutives.find(e => e.employee_id === curUser.employee_id || e.id === curUser.id || e.name?.toLowerCase() === curUser.name?.toLowerCase());
+    let executiveProfile: any = null;
+    let assignedProjects: any[] = [];
+
+    if (matchedExec) {
+      const team = store.salesTeams.find(t => t.id === matchedExec.team_id);
+      
+      const teamProjIds = store.teamProjects ? store.teamProjects.filter((tp: any) => tp.team_id === matchedExec.team_id).map((tp: any) => tp.project_id) : [];
+      const allAssignedProjIds = Array.from(new Set([matchedExec.project_id, ...teamProjIds].filter(Boolean)));
+      
+      assignedProjects = store.projects
+        .filter(p => allAssignedProjIds.includes(p.id))
+        .map(p => {
+          const salesInProj = store.sales.filter(s => s.executive_id === matchedExec.id && s.project_id === p.id);
+          const totalVolSold = salesInProj.reduce((sum, s) => sum + getSaleVolume(s, store), 0);
+          return {
+            id: p.id,
+            project_name: p.project_name,
+            location: p.location,
+            total_units: p.total_flats || p.units || 10,
+            sold_count_by_me: salesInProj.length,
+            vol_sold_by_me: totalVolSold,
+            avg_land_share: p.land_share_amount || 0,
+            status: p.status || 'Active'
+          };
+        });
+
+      const salesByMe = store.sales.filter(s => s.executive_id === matchedExec.id);
+      const totalVolSoldByMe = salesByMe.reduce((sum, s) => sum + getSaleVolume(s, store), 0);
+      const incsByMe = store.salesIncentives.filter(si => si.executive_id === matchedExec.id);
+      const totalIncByMe = incsByMe.reduce((sum, si) => sum + si.total_incentive, 0);
+      
+      const targetCount = matchedExec.target || 0;
+      const primaryProj = store.projects.find(p => p.id === matchedExec.project_id);
+      const avgPrice = primaryProj?.land_share_amount || 2500000;
+      const expectedVolToSell = targetCount * avgPrice;
+
+      executiveProfile = {
+        id: matchedExec.id,
+        employee_id: matchedExec.employee_id,
+        name: matchedExec.name,
+        team_id: matchedExec.team_id,
+        team_name: team ? team.team_name : "General Division",
+        target: targetCount,
+        achieved: salesByMe.length,
+        totalVolumeBDT: totalVolSoldByMe,
+        totalIncentiveBDT: totalIncByMe,
+        expectedVolumeBDT: expectedVolToSell,
+        joining_date: matchedExec.joining_date
+      };
+    }
+
     res.json({
       cards: {
         totalSales: totalSalesCount,
@@ -777,7 +838,9 @@ export async function startServer() {
       execAchievements: execAchievementRates,
       execAchievementsPeriod: periodName,
       timelineActivities: sortedActivities,
-      bonusRules: store.bonusRules
+      bonusRules: store.bonusRules,
+      executiveProfile,
+      assignedProjects
     });
     } catch (err: any) {
       console.error("[server.ts] Error compiling dashboard analytics:", err);
@@ -1426,6 +1489,8 @@ export async function startServer() {
 
       // Recalculate remaining incentives since a unit registration is processed or revoked
       recalculateAllIncentivesDirect(store);
+      
+      writeStore(store);
       
       // Update store and record audit log atomized
       logAction(user, "Update Unit Registration", `Updated Unit '${current.unit_name}' registration to: ${registered} (${registration_date || 'No Date'}).`);

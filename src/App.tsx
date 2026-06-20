@@ -382,7 +382,7 @@ export default function App() {
   return (
     <div className={`min-h-screen flex transition-colors duration-200 ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-gray-50/50 text-gray-900'}`}>
       {/* 1. DESKTOP SIDEBAR PANEL */}
-      <aside className={`hidden lg:flex flex-col w-72 border-r p-6 space-y-8 h-screen sticky top-0 shrink-0 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+      <aside className={`hidden lg:flex flex-col w-72 p-6 space-y-8 h-screen sticky top-0 shrink-0 premium-glass border-r border-slate-200/40 dark:border-slate-800/50 ${isDarkMode ? 'text-slate-100' : 'text-gray-900'}`}>
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-600 text-white shadow-md">
             <Building2 className="w-5 h-5" />
@@ -482,7 +482,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* UPPER NAVIGATION BAR RAIL */}
-        <header className={`h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300 shadow-xs dark:shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-800 text-white shadow-slate-950/45' : 'bg-white border-gray-100 text-gray-800 shadow-gray-100/50'}`}>
+        <header className={`h-16 flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-300 border-b premium-glass border-slate-200/40 dark:border-slate-800/50 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
           <div className="flex items-center gap-3">
             {/* Mobile menu trigger */}
             <button
