@@ -62,14 +62,9 @@ type AppRoute = 'dashboard' | 'projects-on-sale' | 'registration' | 'projects' |
 
 export default function App() {
   const { toast } = useToast();
-  const [authToken, setAuthToken] = useState<string | null>('u-admin');
-  const [userProfile, setUserProfile] = useState<any | null>({
-    id: "u-admin",
-    email: "rayhanbhuiyan2021@gmail.com",
-    name: "Rayhan Bhuiyan",
-    role: "Admin"
-  });
-  const [checkingAuth, setCheckingAuth] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   // Theme support
   const [isDarkMode, setIsDarkMode] = useState<boolean>(localStorage.getItem('tphl_theme') === 'dark');
@@ -174,10 +169,37 @@ export default function App() {
 
   // Authenticate and load permissions state on startup
   useEffect(() => {
-    const defaultToken = 'u-admin';
-    localStorage.setItem('tphl_token', defaultToken);
-    fetchUnreadNotifications(defaultToken);
-    loadGlobalAccessPolicies(defaultToken);
+    const savedToken = localStorage.getItem('tphl_token');
+    if (savedToken) {
+      fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${savedToken}` }
+      })
+      .then(r => {
+        if (!r.ok) {
+          throw new Error("Expired or invalid session token.");
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (data && data.user) {
+          setAuthToken(savedToken);
+          setUserProfile(data.user);
+          fetchUnreadNotifications(savedToken);
+          loadGlobalAccessPolicies(savedToken);
+        } else {
+          localStorage.removeItem('tphl_token');
+        }
+      })
+      .catch(err => {
+        console.warn("[App.tsx] Auto-sign-in session failed or expired:", err);
+        localStorage.removeItem('tphl_token');
+      })
+      .finally(() => {
+        setCheckingAuth(false);
+      });
+    } else {
+      setCheckingAuth(false);
+    }
   }, []);
 
   useEffect(() => {

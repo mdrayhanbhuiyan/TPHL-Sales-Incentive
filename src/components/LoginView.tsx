@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { KeyRound, ShieldAlert, CheckCircle, Flame, Building2, User } from 'lucide-react';
+import { ShieldAlert, Building2 } from 'lucide-react';
 
 interface LoginViewProps {
   onLoginSuccess: (token: string, user: any) => void;
@@ -47,22 +47,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       setError(err.message || "An unexpected error occurred during login.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSeededLogin = (role: 'admin' | 'leader' | 'exec') => {
-    if (role === 'admin') {
-      setEmail("rayhanbhuiyan2021@gmail.com");
-      setPassword("coo@tphl.com");
-      handleLogin(null as any, "rayhanbhuiyan2021@gmail.com", "coo@tphl.com");
-    } else if (role === 'leader') {
-      setEmail("leader@tphl.com");
-      setPassword("leader123");
-      handleLogin(null as any, "leader@tphl.com", "leader123");
-    } else {
-      setEmail("executive@tphl.com");
-      setPassword("executive123");
-      handleLogin(null as any, "executive@tphl.com", "executive123");
     }
   };
 
@@ -122,41 +106,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           </button>
         </form>
 
-        {/* Quick Test Drive Portal */}
-        <div className="border-t border-gray-100 pt-5 space-y-3">
-          <div className="flex items-center justify-between text-xs text-gray-500 font-semibold px-1">
-            <span>🛡️ Quick Test Drive Sign-In</span>
-            <span className="text-[10px] text-indigo-600 font-mono">Password auto-filled</span>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => handleSeededLogin('admin')}
-              className="flex flex-col items-center gap-1.5 border border-indigo-100 rounded-xl py-2 bg-indigo-50/30 hover:bg-indigo-50/80 transition-all group"
-            >
-              <KeyRound className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-indigo-900 uppercase">1. Admin</span>
-            </button>
-
-            <button
-              onClick={() => handleSeededLogin('leader')}
-              className="flex flex-col items-center gap-1.5 border border-emerald-100 rounded-xl py-2 bg-emerald-50/30 hover:bg-emerald-50/80 transition-all group"
-            >
-              <User className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-emerald-950 uppercase">2. Leader</span>
-            </button>
-
-            <button
-              onClick={() => handleSeededLogin('exec')}
-              className="flex flex-col items-center gap-1.5 border border-amber-100 rounded-xl py-2 bg-amber-50/30 hover:bg-amber-50/80 transition-all group"
-            >
-              <Flame className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-amber-950 uppercase">3. Exec</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="text-center">
+        <div className="text-center pt-2 border-t border-gray-50">
           <p className="text-[10px] text-gray-400 font-mono">TPHL Sales Incentive Management System v2.0</p>
         </div>
       </div>
