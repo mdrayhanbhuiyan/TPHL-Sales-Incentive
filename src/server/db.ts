@@ -1069,6 +1069,7 @@ export async function pullFromFirestore(): Promise<void> {
       }
     }
     console.log("[db.ts] Successfully pulled fresh operational dataset from Firebase Firestore!");
+    dbRevision++;
   }
 }
 
@@ -1263,11 +1264,22 @@ export function getPendingWrites(): Promise<any> {
   return Promise.all(activeWritePromises);
 }
 
+let dbRevision = 1;
+
+export function getDbRevision(): number {
+  return dbRevision;
+}
+
+export function incrementDbRevision(): void {
+  dbRevision++;
+}
+
 let activeWritePromiseChain: Promise<any> = Promise.resolve();
 
 // Synchronously update cache, and trigger direct async/awaited Firestore save with back-propagating promise and safely managed globally caught rejection to prevent unhandled rejections
 export function writeStore(store: DatabaseStore): Promise<void> {
   cachedStore = store;
+  dbRevision++;
   
   // Chain the write operation to execute strictly sequentially after any previous write completes
   const promise = activeWritePromiseChain.then(() => writeStoreToFirestore(store)).catch((err) => {

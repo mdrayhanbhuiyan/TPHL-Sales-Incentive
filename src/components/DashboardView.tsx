@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import { 
   TrendingUp, 
   Coins, 
@@ -22,7 +23,8 @@ import {
   Target,
   Medal,
   Database,
-  Flame
+  Flame,
+  Printer
 } from 'lucide-react';
 import ExecutiveIncentiveChart from './ExecutiveIncentiveChart';
 
@@ -288,6 +290,62 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
   const totalProjSalesSum = projectData.reduce((sum: number, p: any) => sum + (p.sales || 0), 0);
   const totalTeamIncentivesSum = teamData.reduce((sum: number, t: any) => sum + (t.incentive || 0), 0);
 
+  // Quick Snapshot calculations
+  const latestMonth = timelineData.length > 0 ? timelineData[timelineData.length - 1] : null;
+  const previousMonth = timelineData.length > 1 ? timelineData[timelineData.length - 2] : null;
+
+  let currentPoolAmount = 0;
+  let currentMonthName = "Active Period";
+  let currentMonthUnitCount = 0;
+  let trendDirectionStr: 'up' | 'down' | 'stable' = 'stable';
+  let trendPercentage = 0;
+
+  if (latestMonth) {
+    currentPoolAmount = latestMonth.incentive || 0;
+    currentMonthName = latestMonth.monthName || "Active Month";
+    currentMonthUnitCount = latestMonth.count || 0;
+
+    if (previousMonth && previousMonth.incentive > 0) {
+      const difference = currentPoolAmount - previousMonth.incentive;
+      trendPercentage = Math.round((difference / previousMonth.incentive) * 100);
+      if (trendPercentage > 0) {
+        trendDirectionStr = 'up';
+      } else if (trendPercentage < 0) {
+        trendDirectionStr = 'down';
+        trendPercentage = Math.abs(trendPercentage);
+      }
+    }
+  }
+
+  // Find top-performing projects by total sales value
+  const topProjectsList = [...projectData]
+    .sort((a, b) => (b.sales || 0) - (a.sales || 0))
+    .slice(0, 3);
+
+  // Scale points for miniature sparkline
+  const sparklineMonths = timelineData.slice(-5);
+  const sparklinePoints = sparklineMonths.length > 1 ? (() => {
+    const maxVal = Math.max(...sparklineMonths.map((m: any) => m.incentive || 0), 1);
+    const minVal = Math.min(...sparklineMonths.map((m: any) => m.incentive || 0), 0);
+    const range = maxVal - minVal || 1;
+    
+    // Width: 120, Height: 40 coordinates
+    return sparklineMonths.map((m: any, idx: number) => {
+      const x = (idx / (sparklineMonths.length - 1)) * 100 + 10;
+      const y = 35 - (((m.incentive || 0) - minVal) / range) * 28;
+      return `${x},${y}`;
+    }).join(' ');
+  })() : "";
+
+  const formatBDTValue = (val: number) => {
+    if (val >= 10000000) {
+      return `${(val / 10000000).toFixed(2)} Cr BDT`;
+    } else if (val >= 100000) {
+      return `${(val / 100000).toFixed(1)} L BDT`;
+    }
+    return `${val.toLocaleString()} BDT`;
+  };
+
   return (
     <div className="space-y-8">
       {/* Welcome Banner */}
@@ -383,10 +441,21 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
           </button>
         </div>
 
-        <div className="hidden md:flex items-center gap-2 font-mono text-[10px] font-bold text-gray-400 tracking-wider uppercase">
-          <span>Enterprise Premium Portal</span>
-          <span className="text-gray-300 dark:text-slate-700">•</span>
-          <span className="text-indigo-600 dark:text-indigo-400">{activeSubTab} Active</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 border border-indigo-150 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:hover:bg-indigo-900/35 dark:border-indigo-900/40 text-indigo-750 dark:text-indigo-400 text-xs font-bold rounded-xl shadow-2xs hover:shadow-xs transition duration-200 cursor-pointer select-none"
+            title="Export dashboard metrics and snapshot as a professional PDF report"
+          >
+            <Printer className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+            <span>Print Report</span>
+          </button>
+
+          <div className="hidden md:flex items-center gap-2 font-mono text-[10px] font-bold text-gray-400 tracking-wider uppercase">
+            <span>Enterprise Premium Portal</span>
+            <span className="text-gray-300 dark:text-slate-700">•</span>
+            <span className="text-indigo-600 dark:text-indigo-400">{activeSubTab} Active</span>
+          </div>
         </div>
       </div>
 
@@ -508,6 +577,205 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
               </div>
             </div>
           </div>
+
+          {/* Quick Snapshot Section */}
+          <motion.div 
+            id="quick-snapshot-container" 
+            className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            {/* Left Card: Current Month's Total Incentive Pool with Sparkline */}
+            <div id="snapshot-incentive-pool-card" className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 shadow-xs relative overflow-hidden group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse" />
+                    <span>Incentive Analytics</span>
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                    {currentMonthName} Pool
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {trendDirectionStr !== 'stable' && (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold leading-none ${
+                      trendDirectionStr === 'up' 
+                        ? 'bg-emerald-50 text-emerald-750 dark:bg-emerald-950/40 dark:text-emerald-400' 
+                        : 'bg-rose-50 text-rose-750 dark:bg-rose-950/40 dark:text-rose-400'
+                    }`}>
+                      {trendDirectionStr === 'up' ? (
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
+                      )}
+                      <span>{trendPercentage}% vs Prev</span>
+                    </span>
+                  )}
+                  {trendDirectionStr === 'stable' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-50 text-gray-600 dark:bg-slate-850 dark:text-slate-400">
+                      <Activity className="w-3.5 h-3.5 text-gray-500" />
+                      <span>Stable</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 space-y-1 relative z-10">
+                <p className="text-[11px] text-gray-400 dark:text-slate-500 font-medium tracking-wide uppercase">Total Incentive Pool</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                    {formatBDTValue(currentPoolAmount)}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                  Allocated across <span className="font-bold text-indigo-600 dark:text-indigo-400">{currentMonthUnitCount} unit bookings</span> closed in this period.
+                </p>
+              </div>
+
+              {/* Sparkline Graphic Trend Indicator */}
+              {sparklinePoints && (
+                <div className="mt-6 border-t border-gray-100 dark:border-slate-800/60 pt-4 flex items-center justify-between">
+                  <div className="text-left">
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500 font-black tracking-wider uppercase font-mono">5-Month Pool Trend</span>
+                    <p className="text-xs font-bold text-gray-800 dark:text-slate-350 mt-0.5">Continuous Pipeline</p>
+                  </div>
+                  <div className="h-10 w-32 relative select-none">
+                    <svg className="w-full h-full overflow-visible" viewBox="0 0 120 40">
+                      <defs>
+                        <linearGradient id="sparkline-gradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      {/* Area Fill */}
+                      <path
+                        d={`M 10,38 L ${sparklinePoints.split(' ').map((p) => {
+                          const [x, y] = p.split(',');
+                          return `${x},${y}`;
+                        }).join(' L ')} L 110,38 Z`}
+                        fill="url(#sparkline-gradient)"
+                        stroke="none"
+                      />
+                      {/* Draw Sparkline path */}
+                      <polyline
+                        fill="none"
+                        stroke="#6366f1"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={sparklinePoints}
+                      />
+                      {/* End node highlight pointer */}
+                      {(() => {
+                        const pts = sparklinePoints.split(' ');
+                        const [lastX, lastY] = pts[pts.length - 1].split(',');
+                        return (
+                          <circle
+                            cx={lastX}
+                            cy={lastY}
+                            r="3.5"
+                            fill="#6366f1"
+                            stroke="#ffffff"
+                            strokeWidth="1.5"
+                            className="animate-pulse"
+                          />
+                        );
+                      })()}
+                    </svg>
+                  </div>
+                </div>
+              )}
+
+              {/* Decorative Subtle Glowing Glow */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-200 dark:bg-indigo-950/20 rounded-full blur-3xl opacity-30 group-hover:opacity-50 transition duration-500 pointer-events-none" />
+            </div>
+
+            {/* Right Card: Top-Performing Projects */}
+            <div id="snapshot-top-projects-card" className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 shadow-xs relative overflow-hidden group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    <span>Leaderboard</span>
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                    Top-Performing Projects
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono font-bold text-gray-400 dark:text-slate-500 tracking-wider bg-gray-50 dark:bg-slate-850 px-2 py-1 rounded-lg">
+                  BY SALES VOLUME
+                </span>
+              </div>
+
+              {topProjectsList.length > 0 ? (
+                <div className="mt-4 space-y-4">
+                  {topProjectsList.map((proj, idx) => {
+                    const percentageSold = Math.min(Math.round(((proj.soldUnits || 0) / (proj.totalUnits || 10)) * 100), 100);
+                    return (
+                      <div key={proj.id} className="relative group/proj pb-3 border-b border-gray-50 last:border-0 last:pb-0 dark:border-slate-850">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className={`w-5 h-5 flex items-center justify-center rounded-lg text-[10px] font-black font-mono shrink-0 ${
+                              idx === 0 
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' 
+                                : idx === 1 
+                                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-400' 
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350'
+                            }`}>
+                              #{idx + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 dark:text-white truncate" title={proj.name}>
+                                {proj.name}
+                              </p>
+                              <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate mt-0.5">
+                                {proj.location || "Dhaka, BD"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs font-black text-gray-900 dark:text-white font-mono">
+                              {formatBDTValue(proj.sales || 0)}
+                            </p>
+                            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                              {proj.count || 0} unit bookings
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Progress slider showing visual percentage filled */}
+                        <div className="mt-2.5">
+                          <div className="flex items-center justify-between text-[9px] font-bold text-gray-400 dark:text-slate-500 mb-1">
+                            <span>Fulfillment Level</span>
+                            <span>{percentageSold}% ({proj.soldUnits || 0}/{proj.totalUnits || 10} Units)</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-550 ${
+                                idx === 0 
+                                  ? 'bg-gradient-to-r from-amber-400 to-amber-600' 
+                                  : 'bg-gradient-to-r from-indigo-400 to-emerald-400'
+                              }`}
+                              style={{ width: `${percentageSold}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <p className="text-xs font-medium text-gray-400">No projects data compiled yet.</p>
+                </div>
+              )}
+
+              {/* Decorative subtle background design details */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-200 dark:bg-amber-950/20 rounded-full blur-3xl opacity-30 group-hover:opacity-50 transition duration-500 pointer-events-none" />
+            </div>
+          </motion.div>
 
           {/* Automated Incentive Tier Progress Tracker */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-150 dark:border-slate-800 p-6 space-y-6 shadow-xs mt-6">
@@ -2602,6 +2870,145 @@ export default function DashboardView({ authToken, userRole, userProfile, refres
           </div>
         </div>
       )}
+
+      {/* 🧾 System-Generated Printable Executive Report Area (HIDDEN ON SCREEN, SHOWS IN PRINT MODAL ONLY) */}
+      <div id="print-area" className="hidden print:block bg-white text-black p-8 space-y-6">
+        {/* Company Letterhead Header */}
+        <div className="border-b-2 border-gray-800 pb-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-gray-950 uppercase">TPHL Real Estate Developers Ltd.</h1>
+            <p className="text-xs font-semibold font-mono text-gray-500">Corporate Sales Performance Matrix</p>
+            <p className="text-[10px] text-gray-400">Dhaka, Bangladesh | auditing@tphl-group.com</p>
+          </div>
+          <div className="text-right text-[10px] text-gray-400 font-mono">
+            <div>Document: TPHL-REP-DASH-{Math.floor(1000 + Math.random() * 9000)}</div>
+            <div>Generated: {new Date().toLocaleDateString()}</div>
+            <div>Source: live-prod-system</div>
+          </div>
+        </div>
+
+        {/* Title of the Report */}
+        <div className="border-b border-gray-250 pb-3">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block">System Generated Spreadsheet</span>
+          <h2 className="text-md font-bold text-gray-950 leading-tight block">EXECUTIVE PERFORMANCE &amp; DASHBOARD SNAPSHOT</h2>
+          <p className="text-[10px] text-gray-500 mt-1">
+            Official monthly audit ledger summarizing key booking statistics, incentive distributions, project metrics, and monthly pool valuations.
+          </p>
+        </div>
+
+        {/* Current User Context */}
+        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-150">
+          <div>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Requested BY Profile</span>
+            <p className="text-xs font-bold text-gray-800">{userProfile?.name || 'Administrator Officer'}</p>
+            <p className="text-[10px] text-gray-500">{userProfile?.email || 'admin@tphl.com'}</p>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Authorized Role Scope</span>
+            <span className="inline-block bg-indigo-50 border border-indigo-150 text-indigo-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-md mt-1">
+              {userProfile?.role || 'Admin'} Space
+            </span>
+          </div>
+        </div>
+
+        {/* Part 1: High-Level Performance Indicators */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-black text-gray-800 uppercase tracking-widest border-b border-gray-150 pb-1">1. Primary Metrics Breakdown</h3>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="border border-gray-150 p-3 rounded-xl text-center">
+              <span className="text-[9px] text-gray-400 font-bold uppercase block">Total Flat Sales</span>
+              <p className="text-sm font-black text-gray-950 font-mono mt-1">{cards?.totalSales ?? 0} Units</p>
+            </div>
+            <div className="border border-gray-150 p-3 rounded-xl text-center">
+              <span className="text-[9px] text-gray-400 font-bold uppercase block">Closed Sales Volume</span>
+              <p className="text-sm font-black text-gray-950 font-mono mt-1">{formatBDTValue(cards?.totalSalesValue ?? 0)}</p>
+            </div>
+            <div className="border border-gray-150 p-3 rounded-xl text-center">
+              <span className="text-[9px] text-gray-400 font-bold uppercase block">Current Month Pool</span>
+              <p className="text-sm font-black text-gray-950 font-mono mt-1">{formatBDTValue(currentPoolAmount)}</p>
+            </div>
+            <div className="border border-gray-150 p-3 rounded-xl text-center">
+              <span className="text-[9px] text-gray-400 font-bold uppercase block">Incentives Paid</span>
+              <p className="text-sm font-black text-gray-950 font-mono mt-1">{formatBDTValue(cards?.totalIncentivePaid ?? 0)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Part 2: Quick Snapshot Spotlight details */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-black text-gray-800 uppercase tracking-widest border-b border-gray-150 pb-1">2. Quick Snapshot Details ({currentMonthName})</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Monthly Trend information */}
+            <div className="border border-gray-150 p-4 rounded-xl space-y-2">
+              <span className="text-[10px] text-gray-400 font-bold uppercase block">Pipeline Trend Summary</span>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-black text-gray-905">{formatBDTValue(currentPoolAmount)}</span>
+                <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                  trendDirectionStr === 'up' 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' 
+                    : trendDirectionStr === 'down' 
+                    ? 'bg-rose-50 text-rose-700 border border-rose-150' 
+                    : 'bg-gray-50 text-gray-700 border border-gray-150'
+                }`}>
+                  {trendDirectionStr === 'up' ? '↗' : trendDirectionStr === 'down' ? '↘' : '→'} {trendPercentage}%
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500 leading-relaxed">
+                Registered incentive growth compared with physical records of the immediately preceding month. Current month bookings closed is logged at <span className="font-bold">{currentMonthUnitCount} units</span>.
+              </p>
+            </div>
+
+            {/* Top performing projects summary list */}
+            <div className="border border-gray-150 p-4 rounded-xl space-y-2">
+              <span className="text-[10px] text-gray-400 font-bold uppercase block">Top Performing Projects</span>
+              <div className="space-y-1.5 pt-1">
+                {topProjectsList.map((p: any, index: number) => (
+                  <div key={p.id} className="flex items-center justify-between text-[11px] pb-1 border-b border-gray-50 last:border-0 last:pb-0">
+                    <span className="font-semibold text-gray-800 truncate max-w-[180px]">#{index + 1} {p.name}</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatBDTValue(p.sales || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Part 3: Tables showing structural data representation */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-black text-gray-800 uppercase tracking-widest border-b border-gray-150 pb-1">3. Projects Pipeline Portfolio</h3>
+          <div className="overflow-hidden border border-gray-150 rounded-xl">
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead>
+                <tr className="bg-gray-100 border-b border-gray-150 font-bold text-gray-700 uppercase">
+                  <th className="p-2.5">Project / Site Name</th>
+                  <th className="p-2.5">Location</th>
+                  <th className="p-2.5 text-center">Fulfillment Units</th>
+                  <th className="p-2.5 text-right">Value (BDT)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectData.map((proj: any) => (
+                  <tr key={proj.id} className="border-b border-gray-50 last:border-0">
+                    <td className="p-2.5 font-bold text-gray-950">{proj.name}</td>
+                    <td className="p-2.5 text-gray-500">{proj.location || "Dhaka"}</td>
+                    <td className="p-2.5 text-center font-mono font-bold text-indigo-700">{proj.soldUnits || 0} / {proj.totalUnits || 10}</td>
+                    <td className="p-2.5 text-right font-mono text-gray-900 font-bold">{formatBDTValue(proj.sales || 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Print Sign-off seals block */}
+        <div className="pt-24 select-none">
+          <div className="grid grid-cols-3 gap-10 text-[10px] font-semibold text-center text-gray-400 font-mono">
+            <div className="border-t border-gray-250 pt-2 uppercase">Compiled By Auditor</div>
+            <div className="border-t border-gray-250 pt-2 uppercase">Financial Manager Seal</div>
+            <div className="border-t border-gray-250 pt-2 uppercase">Executive Sign-Off Approved</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

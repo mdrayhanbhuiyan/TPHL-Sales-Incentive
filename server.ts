@@ -6,6 +6,7 @@
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import compression from 'compression';
 import { 
   getStore, 
   writeStore, 
@@ -23,6 +24,8 @@ import {
   listFirestoreSnapshots,
   restoreFirestoreSnapshot,
   deleteFirestoreSnapshot,
+  getDbRevision,
+  incrementDbRevision,
   DatabaseStore,
   arrayToCSV,
   csvToItems,
@@ -64,6 +67,9 @@ export async function startServer() {
 
   const app = express();
   const PORT = 3000;
+
+  // Compress all responses mapping gzip/deflate
+  app.use(compression());
 
   // Real-time Firebase Firestore synchronisation check for serverless environments (like Vercel)
   app.use(async (req, res, next) => {
@@ -335,10 +341,25 @@ export async function startServer() {
   });
 
   // --- ANALYTICS & DASHBOARD API ---
+  let lastKnownDbRevision = 0;
+  const analyticsCache = new Map<string, any>();
+
   app.get('/api/dashboard/analytics', authenticateToken, (req, res) => {
     try {
       const store = getStore();
-    const curUser = (req as any).user as User;
+      const curUser = (req as any).user as User;
+
+      // Invalidate target cache if database version changed
+      const currentRevision = getDbRevision();
+      if (currentRevision !== lastKnownDbRevision) {
+        analyticsCache.clear();
+        lastKnownDbRevision = currentRevision;
+      }
+
+      const cacheKey = `${curUser.role}:${curUser.id || ''}:${curUser.employee_id || ''}:${curUser.name || ''}`;
+      if (analyticsCache.has(cacheKey)) {
+        return res.json(analyticsCache.get(cacheKey));
+      }
 
     let targetSales = [...store.sales];
     let targetIncentives = [...store.salesIncentives];
@@ -809,7 +830,7 @@ export async function startServer() {
       };
     }
 
-    res.json({
+    const resultPayload = {
       cards: {
         totalSales: totalSalesCount,
         totalSalesValue: targetSales.reduce((sum, s) => sum + getSaleVolume(s, store), 0),
@@ -841,7 +862,10 @@ export async function startServer() {
       bonusRules: store.bonusRules,
       executiveProfile,
       assignedProjects
-    });
+    };
+
+    analyticsCache.set(cacheKey, resultPayload);
+    res.json(resultPayload);
     } catch (err: any) {
       console.error("[server.ts] Error compiling dashboard analytics:", err);
       res.status(500).json({ error: "Internal server error compiling dashboard analytics: " + (err.message || String(err)) });
