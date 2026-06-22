@@ -42,6 +42,7 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
   const [search, setSearch] = useState('');
   const [selProject, setSelProject] = useState('All');
   const [selMonth, setSelMonth] = useState('All');
+  const [selExecutive, setSelExecutive] = useState('All');
 
   // Report Type Selection
   const [activeReport, setActiveReport] = useState<string>('mon-inc'); 
@@ -285,6 +286,21 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
 
   // List unique values for filters
   const uniqueProjects = Array.from(new Set(incentives.map(inc => inc.project_name))).sort();
+  const uniqueExecutives = Array.from(
+    new Map<string, { name: string; id: string; empId: string }>(
+      incentives
+        .filter(inc => inc.executive_name)
+        .map(inc => [
+          inc.executive_id || inc.employee_id,
+          { 
+            name: inc.executive_name, 
+            id: inc.executive_id || inc.employee_id, 
+            empId: inc.employee_id 
+          }
+        ])
+    ).values()
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
   const monthsName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // Filter incentive rows based on filters
@@ -298,8 +314,9 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
 
       const matchProj = selProject === 'All' || inc.project_name === selProject;
       const matchMonth = selMonth === 'All' || String(inc.month) === selMonth;
+      const matchExec = selExecutive === 'All' || inc.executive_id === selExecutive || inc.employee_id === selExecutive;
 
-      return matchSearch && matchProj && matchMonth;
+      return matchSearch && matchProj && matchMonth && matchExec;
     });
   };
 
@@ -938,6 +955,21 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
           </select>
         </div>
 
+        {/* Executive Wise Selector Option */}
+        <div className="flex items-center gap-2 text-xs font-medium bg-gray-50 border border-gray-100 rounded-xl px-3 py-1 bg-none">
+          <div className="text-gray-400 flex items-center justify-center shrink-0">👤</div>
+          <select
+            value={selExecutive}
+            onChange={(e) => setSelExecutive(e.target.value)}
+            className="w-full bg-transparent focus:outline-none py-1 cursor-pointer font-semibold text-gray-700 select-none"
+          >
+            <option value="All">All Sales Officers</option>
+            {uniqueExecutives.map(exec => (
+              <option key={exec.id} value={exec.id}>{exec.name} ({exec.empId})</option>
+            ))}
+          </select>
+        </div>
+
         {/* EXPORTERS SUITE */}
         <div className="flex items-center justify-end gap-2 text-xs flex-wrap">
           <button
@@ -1165,6 +1197,16 @@ export default function IncentivesView({ authToken, userRole, refreshTrigger }: 
             <div>
               <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block">System Generated Spreadsheet</span>
               <h2 className="text-md font-bold text-gray-900 leading-tight">{activeRepObj.title}</h2>
+              {selExecutive !== 'All' && (() => {
+                const selectedExecObj = uniqueExecutives.find(e => e.id === selExecutive);
+                return selectedExecObj ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="inline-flex items-center bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                      👤 Officer: {selectedExecObj.name} ({selectedExecObj.empId})
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </div>
             <div className="text-right text-[10px] text-gray-400 font-mono">
               Filtered database records: <span className="font-bold text-indigo-600">{activeRepObj.rows.length} rows</span>
