@@ -1323,7 +1323,12 @@ export function logAction(user: { id: string; name: string; role: string } | nul
 }
 
 // Add system notifications
-export function addNotification(title: string, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
+export function addNotification(
+  title: string,
+  message: string,
+  type: 'info' | 'success' | 'warning' | 'error' = 'info',
+  extra?: { executive_id?: string; executive_name?: string; team_id?: string }
+): void {
   const store = getStore();
   const notif: AppNotification = {
     id: `notif-${generateUUID()}`,
@@ -1331,7 +1336,8 @@ export function addNotification(title: string, message: string, type: 'info' | '
     message,
     type,
     timestamp: new Date().toISOString(),
-    read: false
+    read: false,
+    ...extra
   };
   store.notifications.unshift(notif);
   if (store.notifications.length > 50) {

@@ -2329,7 +2329,11 @@ export async function startServer() {
     
     const computedIncentiveObj = store.salesIncentives.find(si => si.sale_id === sid);
     const amountStr = computedIncentiveObj ? computedIncentiveObj.total_incentive.toLocaleString() : "0";
-    addNotification("New Sale & Incentive Calculated", `Sales record created for ${unit_name} (${proj.project_name}). Generated incentive: ${amountStr} BDT.`, 'success');
+    addNotification("New Sale & Incentive Calculated", `Sales record created for ${unit_name} (${proj.project_name}). Generated incentive: ${amountStr} BDT.`, 'success', {
+      executive_id: exec.id,
+      executive_name: exec.name,
+      team_id: exec.team_id
+    });
 
     res.status(201).json(newSale);
   });

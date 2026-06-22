@@ -123,6 +123,9 @@ export interface AppNotification {
   type: 'info' | 'success' | 'warning' | 'error';
   timestamp: string;
   read: boolean;
+  executive_id?: string;
+  executive_name?: string;
+  team_id?: string;
 }
 
 export interface ProjectOnSale {

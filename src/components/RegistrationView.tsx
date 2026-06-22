@@ -20,7 +20,7 @@ import {
   Download,
   Upload
 } from 'lucide-react';
-import { ProjectOnSale, UnitRegistration, Project } from '../types';
+import { ProjectOnSale, UnitRegistration, Project, Sale } from '../types';
 import { useToast } from './Toast';
 
 interface RegistrationViewProps {
@@ -34,6 +34,7 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
   const [projectsOnSale, setProjectsOnSale] = useState<ProjectOnSale[]>([]);
   const [directoryProjects, setDirectoryProjects] = useState<Project[]>([]);
   const [unitRegistrations, setUnitRegistrations] = useState<UnitRegistration[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -182,6 +183,18 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
             if (regStateStr !== 'yes' && regStateStr !== 'no' && regStateStr !== 'true' && regStateStr !== 'false') {
               item._invalid = true;
               item._reason = "Registered field must be 'Yes', 'No', 'true', or 'false'.";
+            } else if (regStateStr === 'yes' || regStateStr === 'true') {
+              const cleanItemUnit = String(item.unit_name).trim().toUpperCase();
+              const targetProjectOnSaleId = item.project_on_sale_id || selectedProjectId;
+              const hasSale = sales.some(s => 
+                s.project_on_sale_id && 
+                String(s.project_on_sale_id) === String(targetProjectOnSaleId) && 
+                String(s.unit_name).trim().toUpperCase() === cleanItemUnit
+              );
+              if (!hasSale) {
+                item._invalid = true;
+                item._reason = "No active logged sale booking record for this unit.";
+              }
             }
           }
 
@@ -317,6 +330,24 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
         if (!currentError) currentError = e.message || "Failed loading registrations data";
       }
 
+      // 4. Fetch sales logger entries
+      try {
+        const salesRes = await fetch('/api/sales', {
+          headers: { 
+            'Authorization': `Bearer ${authToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (salesRes.ok) {
+          const salesData = await salesRes.json();
+          setSales(Array.isArray(salesData) ? salesData : []);
+        } else {
+          console.warn("[RegistrationView] Failed to fetch sales logger data. Status: " + salesRes.status);
+        }
+      } catch (e: any) {
+        console.error("Failed loading sales logger data", e);
+      }
+
       if (currentError) {
         setErrorMsg(currentError);
       }
@@ -334,9 +365,21 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
 
   // Handle setting/toggle registration
   const handleToggleRegistration = async (record: UnitRegistration, forceState?: 'Yes' | 'No', customDate?: string) => {
-    setUpdatingId(record.id);
-
     const nextState = forceState ? forceState : (record.registered === 'Yes' ? 'No' : 'Yes');
+    
+    if (nextState === 'Yes') {
+      const hasSale = sales.some(s => 
+        s.project_on_sale_id && 
+        String(s.project_on_sale_id) === String(record.project_on_sale_id) && 
+        String(s.unit_name).trim().toUpperCase() === String(record.unit_name).trim().toUpperCase()
+      );
+      if (!hasSale) {
+        toast.error(`Cannot complete Deed Registration for Unit "${record.unit_name}". Active logged sales booking record is required before finalizing registration.`);
+        return;
+      }
+    }
+
+    setUpdatingId(record.id);
     // Set current date or provided date
     const nextDate = nextState === 'Yes' 
       ? (customDate || record.registration_date || new Date().toISOString().split('T')[0])
@@ -630,16 +673,32 @@ export default function RegistrationView({ authToken, userRole, refreshTrigger }
                         {updatingId === reg.id ? (
                           <div className="w-5 h-5 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
                         ) : (
-                          <button
-                            onClick={() => handleToggleRegistration(reg)}
-                            className={`p-1 px-3 rounded-lg text-[10px] font-bold tracking-tight cursor-pointer transition ${
-                              isReg 
-                                ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/20' 
-                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                            }`}
-                          >
-                            {isReg ? 'Revoke Deed' : 'Complete Deed'}
-                          </button>
+                          <>
+                            {isReg ? (
+                              <button
+                                onClick={() => handleToggleRegistration(reg)}
+                                className="p-1 px-3 rounded-lg text-[10px] font-bold tracking-tight cursor-pointer transition bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/20"
+                              >
+                                Revoke Deed
+                              </button>
+                            ) : (() => {
+                              const hasSale = sales.some(s => 
+                                s.project_on_sale_id && 
+                                String(s.project_on_sale_id) === String(reg.project_on_sale_id) && 
+                                String(s.unit_name).trim().toUpperCase() === String(reg.unit_name).trim().toUpperCase()
+                              );
+                              return hasSale ? (
+                                <button
+                                  onClick={() => handleToggleRegistration(reg)}
+                                  className="bg-indigo-600 text-white hover:bg-indigo-700 p-1 px-3 rounded-lg text-[10px] font-bold tracking-tight cursor-pointer transition"
+                                >
+                                  Complete Deed
+                                </button>
+                              ) : (
+                                <span className="text-[9px] text-amber-500 font-medium italic block">No Sale Record Logged</span>
+                              );
+                            })()}
+                          </>
                         )}
                       </div>
                     </div>

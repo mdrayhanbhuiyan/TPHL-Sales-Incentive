@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeFirestore, collection, onSnapshot, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -62,6 +62,8 @@ type AppRoute = 'dashboard' | 'projects-on-sale' | 'registration' | 'projects' |
 
 export default function App() {
   const { toast } = useToast();
+  const notifiedNotificationsRef = useRef<Set<string>>(new Set());
+  const isFirstFetchRef = useRef(true);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -145,6 +147,21 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [syncStatus, authToken]);
+
+  // Periodic polling & real-time fetch for unread system notifications (and Team Leader alerts)
+  useEffect(() => {
+    if (!authToken) return;
+
+    // Fetch immediately
+    fetchUnreadNotifications(authToken);
+
+    // Also poll every 8 seconds to ensure we catch any background mutations quickly
+    const timer = setInterval(() => {
+      fetchUnreadNotifications(authToken);
+    }, 8000);
+
+    return () => clearInterval(timer);
+  }, [authToken, userProfile, refreshTrigger]);
 
   // Sync dark class list
   useEffect(() => {
@@ -235,13 +252,47 @@ export default function App() {
   };
 
   const fetchUnreadNotifications = (token: string) => {
+    if (!token) return;
     fetch('/api/system/notifications', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
-    .then(notifList => {
+    .then(async (notifList: any[]) => {
+      if (!Array.isArray(notifList)) return;
       const count = notifList.filter((n: any) => !n.read).length;
       setNotificationsCount(count);
+
+      // Automatic toast alert for Sales Team Leaders on new sales by assigned executives
+      if (userProfile && (userProfile.role === 'Sales Team Leader')) {
+        try {
+          const teamsRes = await fetch('/api/teams', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (teamsRes.ok) {
+            const teamsList = await teamsRes.json();
+            const leaderTeam = teamsList.find((t: any) => 
+              t.team_leader === userProfile.name || t.id === userProfile.team_id
+            );
+            if (leaderTeam) {
+              notifList.forEach((n: any) => {
+                if (!n.read && n.team_id === leaderTeam.id) {
+                  if (!notifiedNotificationsRef.current.has(n.id)) {
+                    notifiedNotificationsRef.current.add(n.id);
+                    if (!isFirstFetchRef.current) {
+                      toast.success(`Sales Log Alert: ${n.executive_name || 'Executive'} logged a sale! ${n.message}`);
+                    }
+                  }
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.error("[Toast Alert Utility] Failed to check team leaders' assigned executives", e);
+        }
+      }
+
+      // After processed once, we set isFirstFetchRef to false
+      isFirstFetchRef.current = false;
     })
     .catch(err => console.error(err));
   };
